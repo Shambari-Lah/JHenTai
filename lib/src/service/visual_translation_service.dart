@@ -1,6 +1,9 @@
+import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide FormData;
 import 'package:jhentai/src/service/jh_service.dart';
 import 'package:jhentai/src/service/storage_service.dart';
 import '../model/visual_translation_annotation.dart';
@@ -45,7 +48,13 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
   /// ページごとの翻訳アノテーションキャッシュ (Key: galleryId_pageIndex または 画像URL)
   final Map<String, List<VisualTranslationAnnotation>> _pageAnnotationsCache = {};
 
+  /// 現在OCR・翻訳処理中のページ
+  final Set<String> _loadingPages = {};
+
   final CloudVisionService _cloudVisionService = CloudVisionService();
+  final Dio _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 20), receiveTimeout: const Duration(seconds: 25)));
+
+  bool isPageTranslating(String pageKey) => _loadingPages.contains(pageKey);
 
   @override
   List<JHLifeCircleBean> get initDependencies => [storageService];
@@ -77,11 +86,13 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
     isTranslationEnabled.value = !isTranslationEnabled.value;
     storageService.write('visualTranslationEnabled', isTranslationEnabled.value);
     log.info('[VisualTranslationService] Translation toggled: ${isTranslationEnabled.value}');
+    update();
   }
 
   void setTranslationEnabled(bool enabled) {
     isTranslationEnabled.value = enabled;
     storageService.write('visualTranslationEnabled', enabled);
+    update();
   }
 
   void saveApiKey(String key) {
@@ -136,14 +147,20 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
     if (_pageAnnotationsCache.containsKey(pageKey)) {
       return _pageAnnotationsCache[pageKey]!;
     }
+    if (_loadingPages.contains(pageKey)) {
+      return [];
+    }
+
+    _loadingPages.add(pageKey);
 
     try {
       List<VisualTranslationAnnotation> annotations = [];
 
-      final bool useCloudVision = (ocrEngineMode.value == OcrEngineMode.cloudVision || ocrEngineMode.value == OcrEngineMode.auto) &&
-          cloudVisionApiKey.value.isNotEmpty;
+      final bool hasCloudVision = cloudVisionApiKey.value.isNotEmpty;
+      final bool hasGemini = geminiApiKey.value.isNotEmpty;
 
-      if (useCloudVision) {
+      // 1. Google Cloud Vision API による高精度 OCR
+      if ((ocrEngineMode.value == OcrEngineMode.cloudVision || ocrEngineMode.value == OcrEngineMode.auto) && hasCloudVision) {
         log.info('[VisualTranslationService] Running Cloud Vision OCR for page: $pageKey');
         annotations = await _cloudVisionService.detectDocumentText(
           imageBytes: imageBytes,
@@ -151,22 +168,35 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
           imageWidth: imageWidth,
           imageHeight: imageHeight,
         );
-      } else {
-        log.info('[VisualTranslationService] Running Local Enhanced OCR for page: $pageKey');
-        // ローカル前処理（コントラスト強調・トーン除去）
-        if (imageWidth != null && imageHeight != null && imageBytes.length >= imageWidth * imageHeight * 4) {
-          final enhancedBytes = ImagePreprocessingService.enhanceForOcr(
-            imageBytes,
-            imageWidth,
-            imageHeight,
-            contrastFactor: 1.5,
-          );
-          // 吹き出し背景色サンプリング
-          log.info('[VisualTranslationService] Preprocessed ${enhancedBytes.length} bytes for local analysis');
+      }
+      // 2. Gemini AI による Vision（吹き出し検出 ＆ 翻訳一括）
+      else if (hasGemini) {
+        log.info('[VisualTranslationService] Running Gemini Multimodal Vision for page: $pageKey');
+        annotations = await _detectAndTranslateWithGemini(
+          imageBytes: imageBytes,
+          apiKey: geminiApiKey.value,
+          imageWidth: imageWidth,
+          imageHeight: imageHeight,
+        );
+        // Gemini Vision の場合は翻訳まで一括完了するためキャッシュして終了
+        if (annotations.isNotEmpty) {
+          _pageAnnotationsCache[pageKey] = annotations;
+          _loadingPages.remove(pageKey);
+          update();
+          return annotations;
         }
       }
+      // 3. 無料フォールバック OCR (無料API / エンドポイント)
+      else {
+        log.info('[VisualTranslationService] Running Free Fallback OCR for page: $pageKey');
+        annotations = await _runFallbackOcr(
+          imageBytes: imageBytes,
+          imageWidth: imageWidth,
+          imageHeight: imageHeight,
+        );
+      }
 
-      // 各アノテーションの背景色サンプリング補正
+      // 各アノテーションの背景色サンプリング補正（吹き出しの背景色に合わせてインペイント色を決定）
       if (imageWidth != null && imageHeight != null && imageBytes.length >= imageWidth * imageHeight * 4) {
         for (int i = 0; i < annotations.length; i++) {
           final ann = annotations[i];
@@ -196,19 +226,29 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
       // セリフテキストの機械翻訳を実行 (オノマトペ以外の文章を targetLanguage へ翻訳)
       final nonOnoAnnotations = annotations.where((a) => !a.isOnomatopoeia).toList();
       if (nonOnoAnnotations.isNotEmpty) {
-        log.info('[VisualTranslationService] Translating ${nonOnoAnnotations.length} dialogue bubbles using ${translationEngine.value.name} (${sourceLanguage.value} -> ${targetLanguage.value})');
         final textsToTranslate = nonOnoAnnotations.map((a) => a.sourceText).toList();
+
+        // スマート言語反転判定：
+        // 原文が日本語なら英語へ、それ以外（中国語、英語、韓国語など）なら日本語へ自動反転
+        String resolvedTarget = targetLanguage.value;
+        if (sourceLanguage.value == 'auto' || targetLanguage.value == 'auto') {
+          resolvedTarget = TextTranslationService.resolveSmartTargetLanguage(textsToTranslate, defaultTarget: targetLanguage.value);
+        }
+
+        log.info('[VisualTranslationService] Translating ${nonOnoAnnotations.length} bubbles using ${translationEngine.value.name} (auto -> $resolvedTarget)');
+
         final translatedTexts = await TextTranslationService.translateBatch(
           texts: textsToTranslate,
           sourceLang: sourceLanguage.value,
-          targetLang: targetLanguage.value,
+          targetLang: resolvedTarget,
           engine: translationEngine.value,
           geminiApiKey: geminiApiKey.value,
           deeplApiKey: deeplApiKey.value,
         );
+
         for (int i = 0; i < nonOnoAnnotations.length; i++) {
           final ann = nonOnoAnnotations[i];
-          final translated = translatedTexts[i];
+          final translated = (i < translatedTexts.length) ? translatedTexts[i] : ann.sourceText;
           final idx = annotations.indexWhere((a) => a.id == ann.id);
           if (idx != -1) {
             final old = annotations[idx];
@@ -231,11 +271,178 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
       }
 
       _pageAnnotationsCache[pageKey] = annotations;
+      _loadingPages.remove(pageKey);
+      update();
       return annotations;
     } catch (e, stack) {
+      _loadingPages.remove(pageKey);
       log.error('[VisualTranslationService] Translation failed for $pageKey: $e', e, stack);
       return [];
     }
+  }
+
+  /// Gemini Multimodal Vision API による吹き出し検出・OCR・翻訳の一括実行
+  Future<List<VisualTranslationAnnotation>> _detectAndTranslateWithGemini({
+    required Uint8List imageBytes,
+    required String apiKey,
+    int? imageWidth,
+    int? imageHeight,
+  }) async {
+    try {
+      final String base64Image = base64Encode(imageBytes);
+      final String url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey';
+
+      const prompt =
+          'You are a manga/comic visual translation specialist. '
+          'Detect all dialogue balloons and speech bubbles in this manga page. '
+          'For each bubble, provide its bounding box in normalized 0-1000 coordinates [ymin, xmin, ymax, xmax], '
+          'the original text, and translate it: if the text is Japanese, translate to natural English; '
+          'if the text is Chinese, English, Korean, or other language, translate to natural Japanese. '
+          'Output ONLY valid JSON in this structure: '
+          '{"bubbles": [{"box_2d": [ymin, xmin, ymax, xmax], "text": "original text", "translation": "translated text", "is_vertical": false}]}';
+
+      final response = await _dio.post(
+        url,
+        data: {
+          'contents': [
+            {
+              'parts': [
+                {'text': prompt},
+                {
+                  'inline_data': {
+                    'mime_type': 'image/jpeg',
+                    'data': base64Image,
+                  }
+                }
+              ]
+            }
+          ],
+          'generationConfig': {
+            'temperature': 0.2,
+            'responseMimeType': 'application/json',
+          }
+        },
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final text = response.data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        if (text != null) {
+          final decoded = jsonDecode(text);
+          final List<dynamic> bubbles = decoded['bubbles'] ?? [];
+          final List<VisualTranslationAnnotation> result = [];
+
+          for (int i = 0; i < bubbles.length; i++) {
+            final b = bubbles[i];
+            final List<dynamic>? box = b['box_2d'];
+            if (box == null || box.length < 4) continue;
+
+            final double ymin = (box[0] as num).toDouble() / 1000.0;
+            final double xmin = (box[1] as num).toDouble() / 1000.0;
+            final double ymax = (box[2] as num).toDouble() / 1000.0;
+            final double xmax = (box[3] as num).toDouble() / 1000.0;
+
+            final String orig = b['text']?.toString() ?? '';
+            final String trans = b['translation']?.toString() ?? orig;
+            final bool isVert = b['is_vertical'] == true;
+
+            result.add(VisualTranslationAnnotation(
+              id: 'gemini_${pageKeyPrefix}_$i',
+              sourceText: orig,
+              translatedText: trans,
+              normalizedRect: Rect.fromLTRB(xmin, ymin, xmax, ymax),
+              dominantColor: Colors.white,
+              isVertical: isVert,
+            ));
+          }
+          return result;
+        }
+      }
+    } catch (e) {
+      log.error('[VisualTranslationService] Gemini Vision failed: $e');
+    }
+    return [];
+  }
+
+  String get pageKeyPrefix => DateTime.now().millisecondsSinceEpoch.toString();
+
+  /// 無料フォールバック OCR（OCR.space / GTX）
+  Future<List<VisualTranslationAnnotation>> _runFallbackOcr({
+    required Uint8List imageBytes,
+    int? imageWidth,
+    int? imageHeight,
+  }) async {
+    try {
+      final String base64Image = 'data:image/jpeg;base64,${base64Encode(imageBytes)}';
+      final response = await _dio.post(
+        'https://api.ocr.space/parse/image',
+        data: FormData.fromMap({
+          'base64Image': base64Image,
+          'language': 'jpn',
+          'isOverlayRequired': true,
+          'detectOrientation': true,
+          'scale': true,
+          'OCREngine': '2',
+        }),
+        options: Options(headers: {'apikey': 'helloworld'}),
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data is String ? jsonDecode(response.data) : response.data;
+        final parsedResults = data['ParsedResults'];
+        if (parsedResults is List && parsedResults.isNotEmpty) {
+          final textOverlay = parsedResults[0]['TextOverlay'];
+          final lines = textOverlay?['Lines'] as List<dynamic>?;
+          if (lines != null && lines.isNotEmpty) {
+            final double w = (imageWidth ?? 1000).toDouble();
+            final double h = (imageHeight ?? 1500).toDouble();
+            final List<VisualTranslationAnnotation> result = [];
+
+            for (int i = 0; i < lines.length; i++) {
+              final line = lines[i];
+              final lineText = line['LineText']?.toString().trim() ?? '';
+              if (lineText.isEmpty) continue;
+
+              final words = line['Words'] as List<dynamic>? ?? [];
+              if (words.isEmpty) continue;
+
+              double minLeft = double.infinity, minTop = double.infinity;
+              double maxRight = -double.infinity, maxBottom = -double.infinity;
+
+              for (final word in words) {
+                final double l = (word['Left'] as num?)?.toDouble() ?? 0;
+                final double t = (word['Top'] as num?)?.toDouble() ?? 0;
+                final double width = (word['Width'] as num?)?.toDouble() ?? 0;
+                final double height = (word['Height'] as num?)?.toDouble() ?? 0;
+
+                minLeft = math.min(minLeft, l);
+                minTop = math.min(minTop, t);
+                maxRight = math.max(maxRight, l + width);
+                maxBottom = math.max(maxBottom, t + height);
+              }
+
+              final Rect normRect = Rect.fromLTRB(
+                (minLeft / w).clamp(0.0, 1.0),
+                (minTop / h).clamp(0.0, 1.0),
+                (maxRight / w).clamp(0.0, 1.0),
+                (maxBottom / h).clamp(0.0, 1.0),
+              );
+
+              result.add(VisualTranslationAnnotation(
+                id: 'fallback_$i',
+                sourceText: lineText,
+                translatedText: lineText,
+                normalizedRect: normRect,
+                dominantColor: Colors.white,
+              ));
+            }
+            return result;
+          }
+        }
+      }
+    } catch (e) {
+      log.error('[VisualTranslationService] Fallback OCR error: $e');
+    }
+    return [];
   }
 
   /// キャッシュ済みの翻訳アノテーションを取得（なければ空リスト）

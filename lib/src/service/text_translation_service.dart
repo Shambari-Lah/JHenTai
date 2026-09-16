@@ -23,6 +23,26 @@ class TextTranslationService {
   /// 翻訳テキストのインメモリキャッシュ (キー: "${engine}_${sourceLang}_${targetLang}_${text}")
   static final Map<String, String> _translationCache = {};
 
+  /// テキストが日本語かどうか判定（ひらがな・カタカナの含有有無）
+  static bool isJapaneseText(String text) {
+    final clean = text.replaceAll(RegExp(r'\s+'), '');
+    if (clean.isEmpty) return false;
+    // ひらがな (\u3040-\u309F) または カタカナ (\u30A0-\u30FF) が1文字でも含まれていれば日本語
+    return RegExp(r'[\u3040-\u309F\u30A0-\u30FF]').hasMatch(clean);
+  }
+
+  /// 原文テキスト群から最適な翻訳先言語を判定
+  /// 原文が日本語なら 'en'、それ以外（中国語・英語・韓国語など）なら 'ja' を返却
+  static String resolveSmartTargetLanguage(List<String> texts, {String defaultTarget = 'ja'}) {
+    if (texts.isEmpty) return defaultTarget;
+    int japaneseCount = 0;
+    for (final t in texts) {
+      if (isJapaneseText(t)) japaneseCount++;
+    }
+    // 日本語テキストが半数以上を占める場合は英語へ翻訳、それ以外は日本語へ翻訳
+    return (japaneseCount > texts.length / 2) ? 'en' : 'ja';
+  }
+
   /// 複数テキストの一括翻訳 (エンジン選択対応)
   static Future<List<String>> translateBatch({
     required List<String> texts,
@@ -34,13 +54,19 @@ class TextTranslationService {
   }) async {
     if (texts.isEmpty) return [];
 
+    // 自動スマート判定 (sourceLang が 'auto' かつ 呼び出し側がスマートルーティングを希望する場合)
+    String effectiveTargetLang = targetLang;
+    if (targetLang == 'auto' || (sourceLang == 'auto' && targetLang == 'smart')) {
+      effectiveTargetLang = resolveSmartTargetLanguage(texts);
+    }
+
     // 1. Gemini AI 翻訳
     if (engine == TranslationEngine.gemini && geminiApiKey != null && geminiApiKey.isNotEmpty) {
       try {
         final geminiResults = await _translateViaGemini(
           texts: texts,
           sourceLang: sourceLang,
-          targetLang: targetLang,
+          targetLang: effectiveTargetLang,
           apiKey: geminiApiKey,
         );
         if (geminiResults.isNotEmpty && geminiResults.length == texts.length) {
@@ -57,7 +83,7 @@ class TextTranslationService {
         final deeplResults = await _translateViaDeepL(
           texts: texts,
           sourceLang: sourceLang,
-          targetLang: targetLang,
+          targetLang: effectiveTargetLang,
           apiKey: deeplApiKey,
         );
         if (deeplResults.isNotEmpty && deeplResults.length == texts.length) {
@@ -74,7 +100,7 @@ class TextTranslationService {
       final translated = await translateText(
         text: text,
         sourceLang: sourceLang,
-        targetLang: targetLang,
+        targetLang: effectiveTargetLang,
       );
       results.add(translated);
     }

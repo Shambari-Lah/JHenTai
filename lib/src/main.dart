@@ -56,7 +56,6 @@ import 'package:jhentai/src/widget/app_manager.dart';
 
 import 'config/theme_config.dart';
 import 'network/archive_bot_request.dart';
-import 'service/visual_translation_service.dart';
 
 List<JHLifeCircleBean> lifeCircleBeans = [
   visualTranslationService,
@@ -103,7 +102,6 @@ List<JHLifeCircleBean> lifeCircleBeans = [
   userSetting,
   keyboardShortcutSetting,
   builtInBlockedUserService,
-  visualTranslationService,
 ];
 
 void main(List<String> args) async {
@@ -112,6 +110,33 @@ void main(List<String> args) async {
   }
 
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 万が一のUI例外時にも赤画面クラッシュを防ぎ、ログに記録した上で安全なUIを表示
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    log.error('Flutter UI Error: ${details.exceptionAsString()}', details.exception, details.stack);
+    return Material(
+      color: Colors.transparent,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 24),
+              const SizedBox(height: 4),
+              Text(
+                '描画エラーが発生しました: ${details.exceptionAsString().split('\n').first}',
+                style: const TextStyle(fontSize: 11, color: Colors.white70),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  };
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     systemNavigationBarColor: Colors.transparent,

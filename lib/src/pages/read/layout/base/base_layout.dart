@@ -1,8 +1,11 @@
+import 'dart:io' as io;
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:jhentai/src/service/gallery_download/download_path_resolver.dart';
 import 'package:jhentai/src/extension/get_logic_extension.dart';
 import 'package:jhentai/src/model/read_page_info.dart';
 import 'package:jhentai/src/setting/read_setting.dart';
@@ -178,35 +181,128 @@ abstract class BaseLayout extends StatelessWidget {
             animateOnlyWhenVisible: true,
             maxBytes: readSetting.enableMaxImageKilobyte.isTrue ? readSetting.maxImageKilobyte.toInt() * 1024 : null,
           ),
-          Obx(() {
-            if (!visualTranslationService.isTranslationEnabled.value) {
-              return const SizedBox.shrink();
-            }
-            final String pageKey = '${readPageState.readPageInfo.gid ?? 0}_$index';
-            return SizedBox(
-              width: w,
-              height: h,
-              child: TranslationOverlayWidget(
-                annotations: visualTranslationService.getAnnotationsForPage(pageKey),
-                imageWidth: w,
-                imageHeight: h,
-                onAnnotationTap: (ann) {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => BubbleEditDialog(
-                      annotation: ann,
-                      onSave: (updated) {
-                        visualTranslationService.updateAnnotation(pageKey, updated);
-                      },
-                    ),
-                  );
-                },
-              ),
-            );
-          }),
+          _buildTranslationOverlay(context, index, w, h),
         ],
       ),
     );
+  }
+
+  /// 翻訳オーバーレイウィジェット（オンライン／ローカル共通）
+  Widget _buildTranslationOverlay(BuildContext context, int index, double w, double h) {
+    return Obx(() {
+      if (!visualTranslationService.isTranslationEnabled.value) {
+        return const SizedBox.shrink();
+      }
+      final String pageKey = '${readPageState.readPageInfo.gid ?? 0}_$index';
+      final annotations = visualTranslationService.getAnnotationsForPage(pageKey);
+      final bool isTranslating = visualTranslationService.isPageTranslating(pageKey);
+
+      // キャッシュにアノテーションがなく、現在翻訳中でもない場合は自動トリガー
+      if (annotations.isEmpty && !isTranslating) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _triggerTranslationForIndex(index);
+        });
+      }
+
+      return SizedBox(
+        width: w,
+        height: h,
+        child: Stack(
+          children: [
+            TranslationOverlayWidget(
+              annotations: annotations,
+              imageWidth: w,
+              imageHeight: h,
+              onAnnotationTap: (ann) {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => BubbleEditDialog(
+                    annotation: ann,
+                    onSave: (updated) {
+                      visualTranslationService.updateAnnotation(pageKey, updated);
+                    },
+                  ),
+                );
+              },
+            ),
+            if (isTranslating)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.75),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.tealAccent.withOpacity(0.8), width: 1.2),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2)),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.tealAccent),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        '翻訳中...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    });
+  }
+
+  /// ページの画像バイト列を取得して OCR ＆ 翻訳処理をキック
+  Future<void> _triggerTranslationForIndex(int index) async {
+    if (!visualTranslationService.isTranslationEnabled.value) return;
+    if (index >= readPageState.images.length || readPageState.images[index] == null) return;
+
+    final String pageKey = '${readPageState.readPageInfo.gid ?? 0}_$index';
+    if (visualTranslationService.isPageTranslating(pageKey)) return;
+    if (visualTranslationService.getAnnotationsForPage(pageKey).isNotEmpty) return;
+
+    Uint8List? imageBytes;
+    final galleryImg = readPageState.images[index]!;
+
+    try {
+      if (galleryImg.path != null) {
+        final filePath = DownloadPathResolver.computeImageDownloadAbsolutePathFromRelativePath(galleryImg.path!);
+        final file = io.File(filePath);
+        if (await file.exists()) {
+          imageBytes = await file.readAsBytes();
+        }
+      } else if (galleryImg.url.isNotEmpty) {
+        imageBytes = await getNetworkImageData(galleryImg.url);
+      }
+
+      if (imageBytes != null && imageBytes.isNotEmpty) {
+        final double? w = logic.readPageState.imageContainerSizes[index]?.width;
+        final double? h = logic.readPageState.imageContainerSizes[index]?.height;
+        await visualTranslationService.getOrTranslatePage(
+          pageKey: pageKey,
+          imageBytes: imageBytes,
+          imageWidth: w?.toInt(),
+          imageHeight: h?.toInt(),
+        );
+      }
+    } catch (e) {
+      log.error('[BaseLayout] Failed to trigger translation for page $index: $e');
+    }
   }
 
   /// loading for online mode
@@ -295,21 +391,30 @@ abstract class BaseLayout extends StatelessWidget {
           return _buildLocalImage(context, index);
         }
 
+        final double w = logic.readPageState.imageContainerSizes[index]?.width ?? logic.getPlaceHolderSize(index).width;
+        final double h = logic.readPageState.imageContainerSizes[index]?.height ?? logic.getPlaceHolderSize(index).height;
+
         return GestureDetector(
           onLongPressStart: (details) => logic.showLocalImageContextMenu(index, context, position: details.globalPosition),
           onSecondaryTapDown: (details) => logic.showLocalImageContextMenu(index, context, position: details.globalPosition),
-          child: EHImage(
-            galleryImage: readPageState.images[index]!.copyWith(
-              path: superResolutionService.computeImageOutputRelativePath(readPageState.images[index]!.path!),
-            ),
-            containerWidth: logic.readPageState.imageContainerSizes[index]?.width ?? logic.getPlaceHolderSize(index).width,
-            containerHeight: logic.readPageState.imageContainerSizes[index]?.height ?? logic.getPlaceHolderSize(index).height,
-            clearMemoryCacheWhenDispose: true,
-            loadingWidgetBuilder: () => _loadingWidgetBuilder(context, index),
-            failedWidgetBuilder: (state) => _failedWidgetBuilderForLocalMode(index, state),
-            completedWidgetBuilder: (state) => completedWidgetBuilderForLocalModeCallBack(index, state),
-            animateOnlyWhenVisible: true,
-            maxBytes: readSetting.enableMaxImageKilobyte.isTrue ? readSetting.maxImageKilobyte.toInt() * 1024 : null,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              EHImage(
+                galleryImage: readPageState.images[index]!.copyWith(
+                  path: superResolutionService.computeImageOutputRelativePath(readPageState.images[index]!.path!),
+                ),
+                containerWidth: w,
+                containerHeight: h,
+                clearMemoryCacheWhenDispose: true,
+                loadingWidgetBuilder: () => _loadingWidgetBuilder(context, index),
+                failedWidgetBuilder: (state) => _failedWidgetBuilderForLocalMode(index, state),
+                completedWidgetBuilder: (state) => completedWidgetBuilderForLocalModeCallBack(index, state),
+                animateOnlyWhenVisible: true,
+                maxBytes: readSetting.enableMaxImageKilobyte.isTrue ? readSetting.maxImageKilobyte.toInt() * 1024 : null,
+              ),
+              _buildTranslationOverlay(context, index, w, h),
+            ],
           ),
         );
       },
@@ -356,21 +461,30 @@ abstract class BaseLayout extends StatelessWidget {
   }
 
   Widget _buildLocalImage(BuildContext context, int index) {
+    final double w = logic.readPageState.imageContainerSizes[index]?.width ?? logic.getPlaceHolderSize(index).width;
+    final double h = logic.readPageState.imageContainerSizes[index]?.height ?? logic.getPlaceHolderSize(index).height;
+
     return GestureDetector(
       onLongPressStart: (details) => logic.showLocalImageContextMenu(index, context, position: details.globalPosition),
       onSecondaryTapDown: (details) => logic.showLocalImageContextMenu(index, context, position: details.globalPosition),
-      child: EHImage(
-        galleryImage: readPageState.images[index]!,
-        containerWidth: logic.readPageState.imageContainerSizes[index]?.width ?? logic.getPlaceHolderSize(index).width,
-        containerHeight: logic.readPageState.imageContainerSizes[index]?.height ?? logic.getPlaceHolderSize(index).height,
-        clearMemoryCacheWhenDispose: true,
-        downloadingWidgetBuilder: () => _downloadingWidgetBuilder(index),
-        pausedWidgetBuilder: () => _pausedWidgetBuilder(index),
-        loadingWidgetBuilder: () => _loadingWidgetBuilder(context, index),
-        failedWidgetBuilder: (state) => _failedWidgetBuilderForLocalMode(index, state),
-        completedWidgetBuilder: (state) => completedWidgetBuilderForLocalModeCallBack(index, state),
-        animateOnlyWhenVisible: true,
-        maxBytes: readSetting.enableMaxImageKilobyte.isTrue ? readSetting.maxImageKilobyte.toInt() * 1024 : null,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          EHImage(
+            galleryImage: readPageState.images[index]!,
+            containerWidth: w,
+            containerHeight: h,
+            clearMemoryCacheWhenDispose: true,
+            downloadingWidgetBuilder: () => _downloadingWidgetBuilder(index),
+            pausedWidgetBuilder: () => _pausedWidgetBuilder(index),
+            loadingWidgetBuilder: () => _loadingWidgetBuilder(context, index),
+            failedWidgetBuilder: (state) => _failedWidgetBuilderForLocalMode(index, state),
+            completedWidgetBuilder: (state) => completedWidgetBuilderForLocalModeCallBack(index, state),
+            animateOnlyWhenVisible: true,
+            maxBytes: readSetting.enableMaxImageKilobyte.isTrue ? readSetting.maxImageKilobyte.toInt() * 1024 : null,
+          ),
+          _buildTranslationOverlay(context, index, w, h),
+        ],
       ),
     );
   }
