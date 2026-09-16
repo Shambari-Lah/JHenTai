@@ -18,6 +18,7 @@ class LocaleConsts {
   };
 
   static Map<String, String> localeCode2Description = {
+    'ja_JP': '日本語',
     'zh_CN': '简体中文',
     'zh_TW': '繁體中文(台灣)',
     'en_US': 'English',

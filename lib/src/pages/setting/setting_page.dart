@@ -46,6 +46,11 @@ class SettingPage extends StatelessWidget {
               onTap: () => toRoute(Routes.settingPrefix + 'read'),
             ),
             ListTile(
+              leading: const Icon(Icons.translate),
+              title: Text('visualTranslation'.tr),
+              onTap: () => toRoute(Routes.settingVisualTranslation),
+            ),
+            ListTile(
               leading: const Icon(Icons.stars),
               title: Text('preference'.tr),
               onTap: () => toRoute(Routes.settingPrefix + 'preference'),

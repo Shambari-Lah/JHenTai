@@ -43,7 +43,15 @@ app.*.map.json
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile
-/android/app/release
-
 /lib/src/firebase_options.dart
 /assets/sentry_dsn
+
+# Binary APKs
+*.apk
+/apk/
+
+# Legacy artifacts
+**/node_modules/
+**/dist/
+legacy/node_modules/
+legacy/server/dist/

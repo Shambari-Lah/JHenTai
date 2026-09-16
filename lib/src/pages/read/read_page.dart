@@ -21,6 +21,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../config/ui_config.dart';
+import '../../routes/routes.dart';
 import '../../service/gallery_download/gallery_download_service.dart';
 import '../../service/visual_translation_service.dart';
 import '../../setting/keyboard_shortcut_setting.dart';
@@ -310,18 +311,24 @@ class _ReadPageState extends State<ReadPage> with ScrollStatusListener, WindowLi
             title: Text(state.readPageInfo.galleryTitle, style: const TextStyle(color: UIConfig.readPageButtonColor)),
             leading: const BackButton(color: UIConfig.readPageButtonColor),
             actions: [
-              Obx(() => IconButton(
-                    icon: Icon(
-                      Icons.g_translate,
-                      size: 24,
-                      color: visualTranslationService.isTranslationEnabled.value
-                          ? Colors.tealAccent
-                          : UIConfig.readPageButtonColor,
-                    ),
-                    tooltip: '多言語翻訳オーバーレイ (Visual Translation)',
-                    onPressed: () {
+              Obx(() => InkResponse(
+                    radius: 20,
+                    onTap: () {
                       visualTranslationService.toggleTranslation();
                     },
+                    onLongPress: () {
+                      toRoute(Routes.settingVisualTranslation);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Icon(
+                        Icons.g_translate,
+                        size: 24,
+                        color: visualTranslationService.isTranslationEnabled.value
+                            ? Colors.tealAccent
+                            : UIConfig.readPageButtonColor,
+                      ),
+                    ),
                   )),
               if (GetPlatform.isDesktop &&
                   state.readPageInfo.gid != null &&

@@ -39,6 +39,7 @@ import 'package:jhentai/src/pages/setting/read/setting_read_page.dart';
 import 'package:jhentai/src/pages/setting/security/setting_security_page.dart';
 import 'package:jhentai/src/pages/setting/setting_page.dart';
 import 'package:jhentai/src/pages/setting/style/setting_style_page.dart';
+import 'package:jhentai/src/pages/setting/visual_translation/setting_visual_translation_page.dart';
 import 'package:jhentai/src/pages/watched/watched_page.dart';
 import 'package:jhentai/src/pages/webview/webview_page.dart';
 import 'package:jhentai/src/setting/preference_setting.dart';
@@ -106,6 +107,7 @@ class Routes {
   static const String settingCloud = "/setting_cloud";
   static const String settingSecurity = "/setting_security";
   static const String settingAbout = "/setting_about";
+  static const String settingVisualTranslation = "/setting_visual_translation";
   static const String settingKeyboardShortcuts = "/setting_read/keyboard_shortcuts";
   static const String settingTapZoneStyle = "/setting_read/tapZoneStyle";
 
@@ -303,6 +305,11 @@ class Routes {
       page: () => const SettingTapZonePage().withEscOrFifthButton2BackRightRoute(),
       transition: defaultTransition,
       offAllBefore: false,
+    ),
+    EHPage(
+      name: settingVisualTranslation,
+      page: () => const SettingVisualTranslationPage().withEscOrFifthButton2BackRightRoute(),
+      transition: defaultTransition,
     ),
     EHPage(
       name: settingPreference,

@@ -49,6 +49,7 @@ class SettingReadPage extends StatelessWidget {
                   _buildEnableTapDragToScaleUp().center(),
                   _buildEnableBottomMenu().center(),
                   _buildTapZoneStyle(context).center(),
+                  _buildVisualTranslation(context).center(),
                   _buildEnableImageMaxKilobytes().center(),
                   if (readSetting.enableMaxImageKilobyte.isTrue) _buildImageMaxKilobytes(context).fadeIn(const Key('imageMaxKilobytes')).center(),
                   if (GetPlatform.isDesktop) _buildUseThirdPartyViewer().center(),
@@ -746,6 +747,15 @@ class SettingReadPage extends StatelessWidget {
           DropdownMenuItem(child: Text('adaptive'.tr), value: TurnPageMode.adaptive),
         ],
       ).marginOnly(right: 12),
+    );
+  }
+
+  Widget _buildVisualTranslation(BuildContext context) {
+    return ListTile(
+      title: Text('visualTranslation'.tr),
+      subtitle: Text('visualTranslationSettingHint'.tr),
+      trailing: const Icon(Icons.keyboard_arrow_right),
+      onTap: () => toRoute(Routes.settingVisualTranslation),
     );
   }
 }

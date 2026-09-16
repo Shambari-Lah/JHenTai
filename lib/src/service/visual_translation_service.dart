@@ -2,8 +2,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:jhentai/src/service/jh_service.dart';
+import 'package:jhentai/src/service/storage_service.dart';
 import '../model/visual_translation_annotation.dart';
-import '../model/onomatopoeia_dictionary.dart';
 import 'cloud_vision_service.dart';
 import 'image_preprocessing_service.dart';
 import 'log.dart';
@@ -23,8 +23,8 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
   /// Google Cloud Vision API キー
   final RxString cloudVisionApiKey = ''.obs;
 
-  /// ターゲット翻訳言語
-  final RxString targetLanguage = 'en'.obs;
+  /// ターゲット翻訳言語 (デフォルト: 日本語)
+  final RxString targetLanguage = 'ja'.obs;
 
   /// OCR エンジン選択
   final Rx<OcrEngineMode> ocrEngineMode = OcrEngineMode.auto.obs;
@@ -35,11 +35,18 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
   final CloudVisionService _cloudVisionService = CloudVisionService();
 
   @override
-  List<JHLifeCircleBean> get initDependencies => [];
+  List<JHLifeCircleBean> get initDependencies => [storageService];
 
   @override
   Future<void> doInitBean() async {
-    log.info('[VisualTranslationService] Initialized');
+    isTranslationEnabled.value = storageService.read('visualTranslationEnabled') ?? false;
+    cloudVisionApiKey.value = storageService.read('visualTranslationCloudVisionApiKey') ?? '';
+    targetLanguage.value = storageService.read('visualTranslationTargetLanguage') ?? 'ja';
+    final int? ocrModeIndex = storageService.read('visualTranslationOcrEngineMode');
+    if (ocrModeIndex != null && ocrModeIndex >= 0 && ocrModeIndex < OcrEngineMode.values.length) {
+      ocrEngineMode.value = OcrEngineMode.values[ocrModeIndex];
+    }
+    log.info('[VisualTranslationService] Initialized with targetLanguage=${targetLanguage.value}, ocrMode=${ocrEngineMode.value.name}');
   }
 
   @override
@@ -48,7 +55,31 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
   /// 翻訳オーバーレイの表示・非表示を切り替え
   void toggleTranslation() {
     isTranslationEnabled.value = !isTranslationEnabled.value;
+    storageService.write('visualTranslationEnabled', isTranslationEnabled.value);
     log.info('[VisualTranslationService] Translation toggled: ${isTranslationEnabled.value}');
+  }
+
+  void setTranslationEnabled(bool enabled) {
+    isTranslationEnabled.value = enabled;
+    storageService.write('visualTranslationEnabled', enabled);
+  }
+
+  void saveApiKey(String key) {
+    cloudVisionApiKey.value = key.trim();
+    storageService.write('visualTranslationCloudVisionApiKey', cloudVisionApiKey.value);
+    log.info('[VisualTranslationService] API Key updated');
+  }
+
+  void setTargetLanguage(String lang) {
+    targetLanguage.value = lang;
+    storageService.write('visualTranslationTargetLanguage', lang);
+    log.info('[VisualTranslationService] Target language set to $lang');
+  }
+
+  void setOcrEngineMode(OcrEngineMode mode) {
+    ocrEngineMode.value = mode;
+    storageService.write('visualTranslationOcrEngineMode', mode.index);
+    log.info('[VisualTranslationService] OCR engine mode set to ${mode.name}');
   }
 
   /// ページの翻訳結果を取得（キャッシュがあれば即時返却、なければOCR・翻訳実行）
