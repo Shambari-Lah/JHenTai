@@ -27,20 +27,64 @@ class TextTranslationService {
   static bool isJapaneseText(String text) {
     final clean = text.replaceAll(RegExp(r'\s+'), '');
     if (clean.isEmpty) return false;
-    // ひらがな (\u3040-\u309F) または カタカナ (\u30A0-\u30FF) が1文字でも含まれていれば日本語
     return RegExp(r'[\u3040-\u309F\u30A0-\u30FF]').hasMatch(clean);
   }
 
-  /// 原文テキスト群から最適な翻訳先言語を判定
-  /// 原文が日本語なら 'en'、それ以外（中国語・英語・韓国語など）なら 'ja' を返却
-  static String resolveSmartTargetLanguage(List<String> texts, {String defaultTarget = 'ja'}) {
-    if (texts.isEmpty) return defaultTarget;
-    int japaneseCount = 0;
-    for (final t in texts) {
-      if (isJapaneseText(t)) japaneseCount++;
+  /// テキストから主要な言語コード（ja, zh, ko, en, unknown）を判定
+  static String detectLanguageCode(String text) {
+    final clean = text.replaceAll(RegExp(r'\s+'), '');
+    if (clean.isEmpty) return 'unknown';
+
+    // 1. ひらがな・カタカナがあれば日本語
+    if (RegExp(r'[\u3040-\u309F\u30A0-\u30FF]').hasMatch(clean)) {
+      return 'ja';
     }
-    // 日本語テキストが半数以上を占める場合は英語へ翻訳、それ以外は日本語へ翻訳
-    return (japaneseCount > texts.length / 2) ? 'en' : 'ja';
+    // 2. ハングルがあれば韓国語
+    if (RegExp(r'[\uAC00-\uD7AF\u1100-\u11FF]').hasMatch(clean)) {
+      return 'ko';
+    }
+    // 3. 漢字があれば中国語（日本語かながない場合）
+    if (RegExp(r'[\u4E00-\u9FFF]').hasMatch(clean)) {
+      return 'zh';
+    }
+    // 4. 英字主体であれば英語
+    if (RegExp(r'[a-zA-Z]').hasMatch(clean)) {
+      return 'en';
+    }
+
+    return 'unknown';
+  }
+
+  /// テキスト群から最頻出の言語コードを判定
+  static String detectMajorityLanguage(List<String> texts) {
+    if (texts.isEmpty) return 'unknown';
+
+    final Map<String, int> counts = {'ja': 0, 'zh': 0, 'ko': 0, 'en': 0};
+    for (final t in texts) {
+      final lang = detectLanguageCode(t);
+      if (counts.containsKey(lang)) {
+        counts[lang] = counts[lang]! + 1;
+      }
+    }
+
+    String bestLang = 'unknown';
+    int maxCount = 0;
+    counts.forEach((lang, count) {
+      if (count > maxCount) {
+        maxCount = count;
+        bestLang = lang;
+      }
+    });
+
+    return maxCount > 0 ? bestLang : 'unknown';
+  }
+
+  /// 2つの言語コードが実質同一言語かどうか（例: 'zh' と 'zh-CN', 'ja' と 'ja'）
+  static bool isSameLanguage(String lang1, String lang2) {
+    final l1 = lang1.toLowerCase().split('-').first.split('_').first.trim();
+    final l2 = lang2.toLowerCase().split('-').first.split('_').first.trim();
+    if (l1.isEmpty || l2.isEmpty || l1 == 'auto' || l2 == 'auto') return false;
+    return l1 == l2;
   }
 
   /// 複数テキストの一括翻訳 (エンジン選択対応)
@@ -54,11 +98,17 @@ class TextTranslationService {
   }) async {
     if (texts.isEmpty) return [];
 
-    // 自動スマート判定 (sourceLang が 'auto' かつ 呼び出し側がスマートルーティングを希望する場合)
-    String effectiveTargetLang = targetLang;
-    if (targetLang == 'auto' || (sourceLang == 'auto' && targetLang == 'smart')) {
-      effectiveTargetLang = resolveSmartTargetLanguage(texts);
+    // 原文言語の検出
+    final detectedSource = (sourceLang == 'auto' || sourceLang.isEmpty)
+        ? detectMajorityLanguage(texts)
+        : sourceLang;
+
+    // ストッパー判定: 原文言語と翻訳先言語が一致する場合は翻訳処理をスキップ（自己翻訳防止）
+    if (isSameLanguage(detectedSource, targetLang)) {
+      return List<String>.from(texts);
     }
+
+    final String effectiveTargetLang = targetLang;
 
     // 1. Gemini AI 翻訳
     if (engine == TranslationEngine.gemini && geminiApiKey != null && geminiApiKey.isNotEmpty) {

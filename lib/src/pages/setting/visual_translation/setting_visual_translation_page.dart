@@ -21,6 +21,7 @@ class SettingVisualTranslationPage extends StatelessWidget {
   };
 
   static const Map<String, String> _languageOptions = {
+    'auto': 'アプリUI言語に合わせる (Auto) [推奨]',
     'ja': '日本語 (Japanese)',
     'en': 'English (英語)',
     'zh-CN': '简体中文 (Simplified Chinese)',
@@ -138,7 +139,12 @@ class SettingVisualTranslationPage extends StatelessWidget {
 
   Widget _buildTargetLanguageTile(BuildContext context) {
     final currentLang = visualTranslationService.targetLanguage.value;
-    final currentLabel = _languageOptions[currentLang] ?? currentLang;
+    String currentLabel = _languageOptions[currentLang] ?? currentLang;
+    if (currentLang == 'auto') {
+      final effective = visualTranslationService.resolveEffectiveTargetLanguage();
+      final effectiveName = _languageOptions[effective] ?? effective;
+      currentLabel = 'アプリUI連動: $effectiveName';
+    }
 
     return ListTile(
       leading: const Icon(Icons.language),

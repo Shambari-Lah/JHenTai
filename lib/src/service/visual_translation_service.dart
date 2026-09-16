@@ -7,6 +7,7 @@ import 'package:get/get.dart' hide FormData;
 import 'package:jhentai/src/service/jh_service.dart';
 import 'package:jhentai/src/service/storage_service.dart';
 import '../model/visual_translation_annotation.dart';
+import 'package:jhentai/src/setting/preference_setting.dart';
 import 'cloud_vision_service.dart';
 import 'image_preprocessing_service.dart';
 import 'text_translation_service.dart';
@@ -39,8 +40,18 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
   /// 翻訳元の言語 ('auto': 自動検出, 'ja', 'en', 'zh-CN', 'ko' など)
   final RxString sourceLanguage = 'auto'.obs;
 
-  /// ターゲット翻訳言語 (デフォルト: 日本語)
-  final RxString targetLanguage = 'ja'.obs;
+  /// ターゲット翻訳言語 ('auto': アプリUI言語に自動連動, または 'ja', 'en', 'zh-CN', 'ko' など)
+  final RxString targetLanguage = 'auto'.obs;
+
+  /// 実行時に適用される翻訳先言語を解決
+  /// targetLanguage が 'auto'（または未設定）の場合はアプリのUI言語設定（preferenceSetting.locale.value.languageCode）に自動連動
+  String resolveEffectiveTargetLanguage() {
+    if (targetLanguage.value == 'auto' || targetLanguage.value.isEmpty) {
+      final code = preferenceSetting.locale.value.languageCode;
+      return code.isNotEmpty ? code : 'ja';
+    }
+    return targetLanguage.value;
+  }
 
   /// OCR エンジン選択
   final Rx<OcrEngineMode> ocrEngineMode = OcrEngineMode.auto.obs;
@@ -70,7 +81,7 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
       translationEngine.value = TranslationEngine.values[engineIndex];
     }
     sourceLanguage.value = storageService.read('visualTranslationSourceLanguage') ?? 'auto';
-    targetLanguage.value = storageService.read('visualTranslationTargetLanguage') ?? 'ja';
+    targetLanguage.value = storageService.read('visualTranslationTargetLanguage') ?? 'auto';
     final int? ocrModeIndex = storageService.read('visualTranslationOcrEngineMode');
     if (ocrModeIndex != null && ocrModeIndex >= 0 && ocrModeIndex < OcrEngineMode.values.length) {
       ocrEngineMode.value = OcrEngineMode.values[ocrModeIndex];
@@ -228,19 +239,31 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
       if (nonOnoAnnotations.isNotEmpty) {
         final textsToTranslate = nonOnoAnnotations.map((a) => a.sourceText).toList();
 
-        // スマート言語反転判定：
-        // 原文が日本語なら英語へ、それ以外（中国語、英語、韓国語など）なら日本語へ自動反転
-        String resolvedTarget = targetLanguage.value;
-        if (sourceLanguage.value == 'auto' || targetLanguage.value == 'auto') {
-          resolvedTarget = TextTranslationService.resolveSmartTargetLanguage(textsToTranslate, defaultTarget: targetLanguage.value);
+        // 翻訳先言語の解決:
+        // targetLanguage が 'auto' の場合はアプリのUI言語設定（preferenceSetting.locale.value.languageCode）に追従
+        final String effectiveTarget = resolveEffectiveTargetLanguage();
+
+        // 原文言語の自動検出
+        final String detectedSource = (sourceLanguage.value == 'auto' || sourceLanguage.value.isEmpty)
+            ? TextTranslationService.detectMajorityLanguage(textsToTranslate)
+            : sourceLanguage.value;
+
+        // ストッパー判定: 原文言語と翻訳先言語が一致する場合（例: 日本語作品を日本語UIで読んでいる場合）
+        // 翻訳の必要がないため、ストッパーを発動して翻訳処理および上書き描画をスキップ
+        if (TextTranslationService.isSameLanguage(detectedSource, effectiveTarget)) {
+          log.info('[VisualTranslationService] Stopper activated: Source language ($detectedSource) matches UI target language ($effectiveTarget). Skipping translation for $pageKey.');
+          _pageAnnotationsCache[pageKey] = [];
+          _loadingPages.remove(pageKey);
+          update();
+          return [];
         }
 
-        log.info('[VisualTranslationService] Translating ${nonOnoAnnotations.length} bubbles using ${translationEngine.value.name} (auto -> $resolvedTarget)');
+        log.info('[VisualTranslationService] Translating ${nonOnoAnnotations.length} bubbles ($detectedSource -> $effectiveTarget) using ${translationEngine.value.name}');
 
         final translatedTexts = await TextTranslationService.translateBatch(
           texts: textsToTranslate,
-          sourceLang: sourceLanguage.value,
-          targetLang: resolvedTarget,
+          sourceLang: detectedSource,
+          targetLang: effectiveTarget,
           engine: translationEngine.value,
           geminiApiKey: geminiApiKey.value,
           deeplApiKey: deeplApiKey.value,
@@ -289,17 +312,18 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
     int? imageHeight,
   }) async {
     try {
+      final String effectiveTarget = resolveEffectiveTargetLanguage();
       final String base64Image = base64Encode(imageBytes);
       final String url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey';
 
-      const prompt =
+      final String prompt =
           'You are a manga/comic visual translation specialist. '
           'Detect all dialogue balloons and speech bubbles in this manga page. '
           'For each bubble, provide its bounding box in normalized 0-1000 coordinates [ymin, xmin, ymax, xmax], '
-          'the original text, and translate it: if the text is Japanese, translate to natural English; '
-          'if the text is Chinese, English, Korean, or other language, translate to natural Japanese. '
+          'the original text, detected language of the text, and translate it into $effectiveTarget. '
+          'CRITICAL RULE: If the original text is already in $effectiveTarget, keep the original text unchanged as translation. '
           'Output ONLY valid JSON in this structure: '
-          '{"bubbles": [{"box_2d": [ymin, xmin, ymax, xmax], "text": "original text", "translation": "translated text", "is_vertical": false}]}';
+          '{"detected_page_language": "ja/en/zh/ko", "bubbles": [{"box_2d": [ymin, xmin, ymax, xmax], "text": "original text", "translation": "translated text", "is_vertical": false}]}';
 
       final response = await _dio.post(
         url,
@@ -328,6 +352,14 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
         final text = response.data['candidates']?[0]?['content']?['parts']?[0]?['text'];
         if (text != null) {
           final decoded = jsonDecode(text);
+          final String detectedPageLang = decoded['detected_page_language']?.toString() ?? '';
+
+          // ストッパー判定: 原文言語とターゲット言語が一致する場合はスキップ
+          if (TextTranslationService.isSameLanguage(detectedPageLang, effectiveTarget)) {
+            log.info('[VisualTranslationService] Gemini detected page language ($detectedPageLang) matches UI target ($effectiveTarget). Skipping translation.');
+            return [];
+          }
+
           final List<dynamic> bubbles = decoded['bubbles'] ?? [];
           final List<VisualTranslationAnnotation> result = [];
 
@@ -354,6 +386,15 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
               isVertical: isVert,
             ));
           }
+
+          // バブル全体の原文がターゲットと同一の場合はストッパー発動
+          final origTexts = result.map((r) => r.sourceText).toList();
+          final majorityLang = TextTranslationService.detectMajorityLanguage(origTexts);
+          if (TextTranslationService.isSameLanguage(majorityLang, effectiveTarget)) {
+            log.info('[VisualTranslationService] Bubble majority language ($majorityLang) matches UI target ($effectiveTarget). Skipping translation.');
+            return [];
+          }
+
           return result;
         }
       }
