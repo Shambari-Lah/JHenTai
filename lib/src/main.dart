@@ -55,8 +55,10 @@ import 'package:jhentai/src/widget/app_manager.dart';
 
 import 'config/theme_config.dart';
 import 'network/archive_bot_request.dart';
+import 'service/visual_translation_service.dart';
 
 List<JHLifeCircleBean> lifeCircleBeans = [
+  visualTranslationService,
   ehRequest,
   jhRequest,
   archiveBotRequest,

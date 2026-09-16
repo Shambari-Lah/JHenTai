@@ -44,7 +44,7 @@ class DetailPreviewPage extends DetailsPage {
       child: EHWheelSpeedController(
         controller: state.scrollController,
         child: CustomScrollView(
-          scrollCacheExtent: ScrollCacheExtent.pixels(5000),
+          cacheExtent: 5000,
           controller: state.scrollController,
           scrollBehavior: UIConfig.scrollBehaviourWithScrollBarWithMouse  ,
           slivers: [

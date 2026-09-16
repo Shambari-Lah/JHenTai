@@ -130,8 +130,8 @@ class _CachedPageViewState extends State<CachedPageView> {
           return Viewport(
             // TODO(dnfield): we should provide a way to set cacheExtent
             // independent of implicit scrolling:
-            // https://github.com/flutter/flutter/issues/45632
-            scrollCacheExtent: ScrollCacheExtent.viewport(widget.cacheExtent ?? 0),
+            cacheExtent: widget.cacheExtent,
+            cacheExtentStyle: CacheExtentStyle.viewport,
             axisDirection: axisDirection,
             offset: position,
             clipBehavior: widget.clipBehavior,

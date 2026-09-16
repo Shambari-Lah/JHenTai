@@ -26,22 +26,22 @@ class _EHFavoriteSortOrderDialogState extends State<EHFavoriteSortOrderDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text('orderBy'.tr),
-      content: RadioGroup<FavoriteSortOrder>(
-        groupValue: _sortOrder,
-        onChanged: (value) => setState(() => _sortOrder = value),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile(
-              title: Text('favoritedTime'.tr),
-              value: FavoriteSortOrder.favoritedTime,
-            ),
-            RadioListTile(
-              title: Text('publishedTime'.tr),
-              value: FavoriteSortOrder.publishedTime,
-            ),
-          ],
-        ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          RadioListTile<FavoriteSortOrder>(
+            title: Text('favoritedTime'.tr),
+            value: FavoriteSortOrder.favoritedTime,
+            groupValue: _sortOrder,
+            onChanged: (value) => setState(() => _sortOrder = value),
+          ),
+          RadioListTile<FavoriteSortOrder>(
+            title: Text('publishedTime'.tr),
+            value: FavoriteSortOrder.publishedTime,
+            groupValue: _sortOrder,
+            onChanged: (value) => setState(() => _sortOrder = value),
+          ),
+        ],
       ),
       actions: [
         TextButton(onPressed: backRoute, child: Text('cancel'.tr)),

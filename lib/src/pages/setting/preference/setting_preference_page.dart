@@ -311,7 +311,7 @@ class SettingPreferencePage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SliderTheme(
-              data: SliderTheme.of(context).copyWith(showValueIndicator: ShowValueIndicator.onDrag),
+              data: SliderTheme.of(context).copyWith(showValueIndicator: ShowValueIndicator.always),
               child: Slider(
                 min: 20,
                 max: 300,

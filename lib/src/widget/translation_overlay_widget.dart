@@ -1,0 +1,222 @@
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import '../model/visual_translation_annotation.dart';
+
+/// 各ページ画像の上に重ねて表示する翻訳合成オーバーレイ
+class TranslationOverlayWidget extends StatelessWidget {
+  final List<VisualTranslationAnnotation> annotations;
+  final double imageWidth;
+  final double imageHeight;
+  final bool isVisible;
+  final Function(VisualTranslationAnnotation annotation)? onAnnotationTap;
+
+  const TranslationOverlayWidget({
+    super.key,
+    required this.annotations,
+    required this.imageWidth,
+    required this.imageHeight,
+    this.isVisible = true,
+    this.onAnnotationTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isVisible || annotations.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double renderWidth = constraints.maxWidth;
+        final double renderHeight = constraints.maxHeight;
+
+        return Stack(
+          children: [
+            // 1. キャンバス描画（背景消去・インペインティング＆テキスト合成）
+            CustomPaint(
+              size: Size(renderWidth, renderHeight),
+              painter: _TranslationCanvasPainter(
+                annotations: annotations,
+                renderWidth: renderWidth,
+                renderHeight: renderHeight,
+              ),
+            ),
+
+            // 2. タップ検知レイヤー（吹き出しタップで原文・訳文比較ダイアログ表示）
+            ...annotations.map((ann) {
+              final rect = ann.getAbsoluteRect(renderWidth, renderHeight);
+              return Positioned(
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => onAnnotationTap?.call(ann),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Colors.teal.withOpacity(0.3),
+                        width: 1.0,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// インペインティング（元文字消去）とテキストレンダリングを行う CustomPainter
+class _TranslationCanvasPainter extends CustomPainter {
+  final List<VisualTranslationAnnotation> annotations;
+  final double renderWidth;
+  final double renderHeight;
+
+  _TranslationCanvasPainter({
+    required this.annotations,
+    required this.renderWidth,
+    required this.renderHeight,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final ann in annotations) {
+      final rect = ann.getAbsoluteRect(renderWidth, renderHeight);
+      if (rect.isEmpty || rect.width <= 0 || rect.height <= 0) continue;
+
+      canvas.save();
+
+      // 回転中心点（吹き出しの中心）
+      final Offset center = rect.center;
+      canvas.translate(center.dx, center.dy);
+      if (ann.angle != 0.0) {
+        canvas.rotate(ann.angle);
+      }
+
+      final Rect localRect = Rect.fromCenter(
+        center: Offset.zero,
+        width: rect.width,
+        height: rect.height,
+      );
+
+      // --- 1. 背景インペインティング消去 ---
+      final Paint erasePaint = Paint()
+        ..color = ann.dominantColor
+        ..style = PaintingStyle.fill;
+
+      // 角丸の矩形で元テキストを綺麗に塗りつぶして消去
+      final RRect bubbleRRect = RRect.fromRectAndRadius(
+        localRect.inflate(2.0),
+        const Radius.circular(4.0),
+      );
+      canvas.drawRRect(bubbleRRect, erasePaint);
+
+      // --- 2. 翻訳テキストの自動フィッティング計算 ---
+      final String displayText = ann.translatedText;
+      double fontSize = ann.customFontSize ?? _calculateOptimalFontSize(displayText, localRect.size);
+
+      // 擬音の場合はよりダイナミックに強調
+      if (ann.isOnomatopoeia) {
+        fontSize = math.max(fontSize * 1.25, 14.0);
+      }
+
+      // --- 3. コミック風フォントの輪郭（フチ取り）描画 ---
+      final TextSpan strokeSpan = TextSpan(
+        text: displayText,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: ann.isOnomatopoeia ? FontWeight.w900 : FontWeight.bold,
+          fontFamily: 'Kosugi Maru',
+          foreground: Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = ann.strokeWidth
+            ..color = ann.strokeColor,
+        ),
+      );
+
+      final TextPainter strokePainter = TextPainter(
+        text: strokeSpan,
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: localRect.width);
+
+      // 垂直・水平センタリング位置
+      final Offset textOffset = Offset(
+        -strokePainter.width / 2,
+        -strokePainter.height / 2,
+      );
+
+      strokePainter.paint(canvas, textOffset);
+
+      // --- 4. 前景テキスト描画（シャドウ付き） ---
+      final TextSpan textSpan = TextSpan(
+        text: displayText,
+        style: TextStyle(
+          fontSize: fontSize,
+          color: ann.textColor,
+          fontWeight: ann.isOnomatopoeia ? FontWeight.w900 : FontWeight.bold,
+          fontFamily: 'Kosugi Maru',
+          shadows: [
+            Shadow(
+              blurRadius: 2.0,
+              color: Colors.black.withOpacity(0.4),
+              offset: const Offset(1, 1),
+            ),
+          ],
+        ),
+      );
+
+      final TextPainter textPainter = TextPainter(
+        text: textSpan,
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: localRect.width);
+
+      textPainter.paint(canvas, textOffset);
+
+      canvas.restore();
+    }
+  }
+
+  /// ボックスの幅・高さに収まる最適なフォントサイズを二分探索で算出
+  double _calculateOptimalFontSize(String text, Size boxSize) {
+    if (text.isEmpty) return 12.0;
+
+    double minSize = 8.0;
+    double maxSize = 32.0;
+    double bestSize = minSize;
+
+    for (int i = 0; i < 6; i++) {
+      final double midSize = (minSize + maxSize) / 2;
+      final TextPainter tp = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(fontSize: midSize, fontWeight: FontWeight.bold),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: boxSize.width);
+
+      if (tp.height <= boxSize.height && tp.width <= boxSize.width) {
+        bestSize = midSize;
+        minSize = midSize;
+      } else {
+        maxSize = midSize;
+      }
+    }
+
+    return bestSize.clamp(10.0, 24.0);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TranslationCanvasPainter oldDelegate) {
+    return oldDelegate.annotations != annotations ||
+        oldDelegate.renderWidth != renderWidth ||
+        oldDelegate.renderHeight != renderHeight;
+  }
+}

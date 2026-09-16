@@ -55,7 +55,7 @@ class TapZoneGuideOverlay extends StatelessWidget {
                               child: Container(
                                 margin: const EdgeInsets.all(2),
                                 decoration: BoxDecoration(
-                                  color: actionColor(config.actions[row * 3 + col]).withValues(alpha: 0.5),
+                                  color: actionColor(config.actions[row * 3 + col]).withOpacity(0.5),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(color: Colors.white30),
                                 ),

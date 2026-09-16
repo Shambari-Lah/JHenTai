@@ -1,0 +1,16 @@
+{
+  "appId": "com.visualtranslator.app",
+  "appName": "VisualTranslator",
+  "webDir": "client/dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "buildOptions": {
+      "keystorePath": "",
+      "keystoreAlias": ""
+    },
+    "allowMixedContent": true
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VisualTranslator</string>
+    <string name="title_activity_main">VisualTranslator</string>
+    <string name="package_name">com.visualtranslator.app</string>
+    <string name="custom_url_scheme">com.visualtranslator.app</string>
+</resources>

@@ -156,7 +156,7 @@ class TagSetsPage extends StatelessWidget {
                     Expanded(
                       child: ListView.builder(
                         itemExtent: 64,
-                        scrollCacheExtent: ScrollCacheExtent.pixels(3000),
+                        cacheExtent: 3000,
                         itemCount: logic.filteredTags.length,
                         controller: state.scrollController,
                         itemBuilder: (_, int displayIndex) {

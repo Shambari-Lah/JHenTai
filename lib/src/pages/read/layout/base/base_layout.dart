@@ -11,10 +11,13 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../../../../config/ui_config.dart';
 import '../../../../service/gallery_download/gallery_download_service.dart';
 import '../../../../service/super_resolution_service.dart';
+import '../../../../service/visual_translation_service.dart';
 import '../../../../service/log.dart';
+import '../../../../widget/bubble_edit_dialog.dart';
 import '../../../../widget/eh_image.dart';
 import '../../../../widget/icon_text_button.dart';
 import '../../../../widget/loading_state_indicator.dart';
+import '../../../../widget/translation_overlay_widget.dart';
 import '../../read_page_logic.dart';
 import '../../read_page_state.dart';
 import 'base_layout_logic.dart';
@@ -155,19 +158,53 @@ abstract class BaseLayout extends StatelessWidget {
   }
 
   Widget _buildOnlineImage(BuildContext context, int index) {
+    final double w = logic.readPageState.imageContainerSizes[index]?.width ?? logic.getPlaceHolderSize(index).width;
+    final double h = logic.readPageState.imageContainerSizes[index]?.height ?? logic.getPlaceHolderSize(index).height;
+
     return GestureDetector(
       onLongPressStart: (details) => logic.showOnlineImageContextMenu(index, context, position: details.globalPosition),
       onSecondaryTapDown: (details) => logic.showOnlineImageContextMenu(index, context, position: details.globalPosition),
-      child: EHImage(
-        galleryImage: readPageState.images[index]!,
-        containerWidth: logic.readPageState.imageContainerSizes[index]?.width ?? logic.getPlaceHolderSize(index).width,
-        containerHeight: logic.readPageState.imageContainerSizes[index]?.height ?? logic.getPlaceHolderSize(index).height,
-        clearMemoryCacheWhenDispose: true,
-        loadingProgressWidgetBuilder: (double progress) => _loadingProgressWidgetBuilder(index, progress),
-        failedWidgetBuilder: (ExtendedImageState state) => _failedWidgetBuilder(index, state),
-        completedWidgetBuilder: (state) => completedWidgetBuilderCallBack(index, state),
-        animateOnlyWhenVisible: true,
-        maxBytes: readSetting.enableMaxImageKilobyte.isTrue ? readSetting.maxImageKilobyte.toInt() * 1024 : null,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          EHImage(
+            galleryImage: readPageState.images[index]!,
+            containerWidth: w,
+            containerHeight: h,
+            clearMemoryCacheWhenDispose: true,
+            loadingProgressWidgetBuilder: (double progress) => _loadingProgressWidgetBuilder(index, progress),
+            failedWidgetBuilder: (ExtendedImageState state) => _failedWidgetBuilder(index, state),
+            completedWidgetBuilder: (state) => completedWidgetBuilderCallBack(index, state),
+            animateOnlyWhenVisible: true,
+            maxBytes: readSetting.enableMaxImageKilobyte.isTrue ? readSetting.maxImageKilobyte.toInt() * 1024 : null,
+          ),
+          Obx(() {
+            if (!visualTranslationService.isTranslationEnabled.value) {
+              return const SizedBox.shrink();
+            }
+            final String pageKey = '${readPageState.readPageInfo.gid ?? 0}_$index';
+            return SizedBox(
+              width: w,
+              height: h,
+              child: TranslationOverlayWidget(
+                annotations: visualTranslationService.getAnnotationsForPage(pageKey),
+                imageWidth: w,
+                imageHeight: h,
+                onAnnotationTap: (ann) {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => BubbleEditDialog(
+                      annotation: ann,
+                      onSave: (updated) {
+                        visualTranslationService.updateAnnotation(pageKey, updated);
+                      },
+                    ),
+                  );
+                },
+              ),
+            );
+          }),
+        ],
       ),
     );
   }

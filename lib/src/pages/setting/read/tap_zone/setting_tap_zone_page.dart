@@ -140,7 +140,7 @@ class _SettingTapZonePageState extends State<SettingTapZonePage> {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.08) : null,
+          color: selected ? accent.withOpacity(0.08) : null,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selected ? accent : Theme.of(context).dividerColor,
@@ -190,7 +190,7 @@ class _SettingTapZonePageState extends State<SettingTapZonePage> {
                       child: Container(
                         margin: const EdgeInsets.all(1),
                         decoration: BoxDecoration(
-                          color: TapZoneGuideOverlay.actionColor(config.actions[row * 3 + col]).withValues(alpha: 0.5),
+                          color: TapZoneGuideOverlay.actionColor(config.actions[row * 3 + col]).withOpacity(0.5),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -228,7 +228,7 @@ class _SettingTapZonePageState extends State<SettingTapZonePage> {
                           child: Container(
                             margin: const EdgeInsets.all(2),
                             decoration: BoxDecoration(
-                              color: TapZoneGuideOverlay.actionColor(_config.actions[row * 3 + col]).withValues(alpha: 0.3),
+                              color: TapZoneGuideOverlay.actionColor(_config.actions[row * 3 + col]).withOpacity(0.3),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: Theme.of(context).dividerColor),
                             ),

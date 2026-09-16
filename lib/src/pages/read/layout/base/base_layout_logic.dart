@@ -771,7 +771,7 @@ abstract class BaseLayoutLogic extends GetxController with GetTickerProviderStat
     SaveResult saveResult = await SaverGallery.saveFile(
       filePath: filePath,
       fileName: fileName,
-      albumPath: "JHenTai",
+      androidRelativePath: "JHenTai",
       skipIfExists: false,
     );
 

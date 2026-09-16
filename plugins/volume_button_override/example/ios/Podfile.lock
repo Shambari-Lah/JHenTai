@@ -1,0 +1,22 @@
+PODS:
+  - Flutter (1.0.0)
+  - volume_button_override (0.0.1):
+    - Flutter
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - volume_button_override (from `.symlinks/plugins/volume_button_override/ios`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  volume_button_override:
+    :path: ".symlinks/plugins/volume_button_override/ios"
+
+SPEC CHECKSUMS:
+  Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  volume_button_override: 591c34d9d1542294e099948b4100dc5810721741
+
+PODFILE CHECKSUM: 0552d25b3d4262a4c57ee3f8d36c9608ba56d512
+
+COCOAPODS: 1.16.2

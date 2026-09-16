@@ -12,7 +12,6 @@ import 'package:jhentai/src/utils/eh_spider_parser.dart';
 import 'package:jhentai/src/service/log.dart';
 import 'package:jhentai/src/utils/snack_util.dart';
 import 'package:jhentai/src/widget/loading_state_indicator.dart';
-import 'package:syncfusion_flutter_charts/charts.dart';
 
 import '../exception/eh_site_exception.dart';
 
@@ -185,75 +184,38 @@ class _LineGraph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (datasource.isEmpty) {
+      return SizedBox(
+        height: UIConfig.statisticsDialogGraphHeight,
+        width: UIConfig.statisticsDialogGraphWidth,
+        child: Center(child: Text('noData'.tr)),
+      );
+    }
+
     return FadeIn(
       child: SizedBox(
         height: UIConfig.statisticsDialogGraphHeight,
         width: UIConfig.statisticsDialogGraphWidth,
-        child: SfCartesianChart(
-          trackballBehavior: TrackballBehavior(
-            enable: true,
-            activationMode: ActivationMode.singleTap,
-            tooltipSettings: const InteractiveTooltip(format: 'point.x: point.y'),
-            hideDelay: 1500,
+        child: SingleChildScrollView(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: [
+                DataColumn(label: Text('period'.tr)),
+                DataColumn(label: Text('visits'.tr)),
+                DataColumn(label: Text('imageAccesses'.tr)),
+              ],
+              rows: datasource.map((stat) {
+                return DataRow(
+                  cells: [
+                    DataCell(Text(stat.period)),
+                    DataCell(Text(stat.visits.toStringAsFixed(0))),
+                    DataCell(Text(stat.hits.toStringAsFixed(0))),
+                  ],
+                );
+              }).toList(),
+            ),
           ),
-          primaryXAxis: CategoryAxis(
-            tickPosition: TickPosition.inside,
-            majorGridLines: const MajorGridLines(width: 0),
-            majorTickLines: const MajorTickLines(width: 1, size: 3),
-            edgeLabelPlacement: EdgeLabelPlacement.shift,
-            labelStyle: const TextStyle(fontSize: 10),
-          ),
-          primaryYAxis: NumericAxis(
-            title: AxisTitle(
-              text: 'visits'.tr,
-              textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color.fromRGBO(75, 135, 185, 1)),
-            ),
-            tickPosition: TickPosition.inside,
-            labelStyle: const TextStyle(fontSize: 10),
-            majorTickLines: const MajorTickLines(width: 1, size: 3),
-          ),
-          axes: <ChartAxis>[
-            NumericAxis(
-              name: 'imageAccesses',
-              opposedPosition: true,
-              title: AxisTitle(
-                text: 'imageAccesses'.tr,
-                textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color.fromRGBO(192, 108, 132, 1)),
-              ),
-              labelStyle: const TextStyle(fontSize: 10),
-              majorTickLines: const MajorTickLines(width: 1, size: 3),
-            ),
-          ],
-          legend: Legend(isVisible: true, position: LegendPosition.bottom),
-          series: <CartesianSeries<VisitStat, String>>[
-            LineSeries<VisitStat, String>(
-              name: 'visits'.tr,
-              dataSource: datasource,
-              enableTooltip: true,
-              animationDuration: 400,
-              xValueMapper: (VisitStat stat, _) => stat.period,
-              yValueMapper: (VisitStat stat, _) => stat.visits,
-              markerSettings: MarkerSettings(
-                isVisible: true,
-                height: datasource.length < 3 ? 2 : 1,
-                width: datasource.length < 3 ? 2 : 1,
-              ),
-            ),
-            LineSeries<VisitStat, String>(
-              name: 'imageAccesses'.tr,
-              dataSource: datasource,
-              enableTooltip: true,
-              animationDuration: 400,
-              xValueMapper: (VisitStat stat, _) => stat.period,
-              yValueMapper: (VisitStat stat, _) => stat.hits,
-              yAxisName: 'imageAccesses',
-              markerSettings: MarkerSettings(
-                isVisible: true,
-                height: datasource.length < 3 ? 2 : 1,
-                width: datasource.length < 3 ? 2 : 1,
-              ),
-            ),
-          ],
         ),
       ),
     );

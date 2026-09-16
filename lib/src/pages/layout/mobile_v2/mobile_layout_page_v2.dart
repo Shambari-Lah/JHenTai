@@ -62,7 +62,7 @@ class MobileLayoutPageV2 extends StatelessWidget {
                     key: const PageStorageKey('leftDrawer'),
                     controller: state.scrollController,
                     itemCount: state.icons.length,
-                    scrollCacheExtent: ScrollCacheExtent.pixels(1000),
+                    cacheExtent: 1000,
                     itemBuilder: (context, index) => ListTile(
                       dense: true,
                       title: Text(state.icons[index].name.name.tr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),

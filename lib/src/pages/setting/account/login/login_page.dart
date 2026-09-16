@@ -37,7 +37,7 @@ class LoginPage extends StatelessWidget {
     return TabBar(
       controller: logic.tabController,
       labelColor: UIConfig.loginPageForegroundColor(context),
-      unselectedLabelColor: UIConfig.loginPageForegroundColor(context).withValues(alpha: 0.5),
+      unselectedLabelColor: UIConfig.loginPageForegroundColor(context).withOpacity(0.5),
       indicatorColor: UIConfig.loginPageForegroundColor(context),
       tabs: [
         Tab(text: 'passwordTab'.tr),

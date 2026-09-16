@@ -28,12 +28,12 @@ class ThemeConfig {
       checkboxTheme: const CheckboxThemeData(mouseCursor: clickableMouseCursor),
       radioTheme: const RadioThemeData(mouseCursor: clickableMouseCursor),
       sliderTheme: const SliderThemeData(mouseCursor: clickableMouseCursor),
-      tabBarTheme: const TabBarThemeData(mouseCursor: clickableMouseCursor),
+      tabBarTheme: const TabBarTheme(mouseCursor: clickableMouseCursor),
     );
 
     return themeData.copyWith(
       appBarTheme: themeData.appBarTheme.copyWith(backgroundColor: themeData.colorScheme.surface),
-      dialogTheme: DialogThemeData(backgroundColor: themeData.colorScheme.surface),
+      dialogTheme: DialogTheme(backgroundColor: themeData.colorScheme.surface),
     );
   }
 }
