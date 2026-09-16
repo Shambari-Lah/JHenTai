@@ -50,7 +50,7 @@ class SettingPreferencePage extends StatelessWidget {
               _buildEnableDefaultTagSet(),
               if (GetPlatform.isDesktop && styleSetting.isInDesktopLayout) _buildLaunchInFullScreen(),
               _buildTagSearchConfig(),
-              if (preferenceSetting.enableTagZHTranslation.isTrue) _buildShowR18GImageDirectly().fadeIn(const Key('showR18GImageDirectly')),
+              _buildShowR18GImageDirectly(),
               _buildShowUtcTime(),
               _buildShowDawnInfo(),
               _buildShowEncounterMonster(),

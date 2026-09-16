@@ -134,7 +134,7 @@ class FirstOpenHandler implements UpdateHandler {
 
   @override
   Future<void> onReady() async {
-    if (preferenceSetting.locale.value.languageCode == 'zh') {
+    if (preferenceSetting.locale.value.languageCode == 'zh' || preferenceSetting.locale.value.languageCode == 'ja') {
       preferenceSetting.saveEnableTagZHTranslation(true);
       tagTranslationService.fetchDataFromGithub();
     }
