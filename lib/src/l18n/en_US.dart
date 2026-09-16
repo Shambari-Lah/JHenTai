@@ -957,6 +957,21 @@ Example 2: Block comments with a score not exceeding 10————Comment Score
       'howToUseTranslationStep2': '2. Tap screen center to bring up the menu, then tap the [🌐] translate icon at top right.',
       'howToUseTranslationStep3': '3. Text bubbles on the page will be automatically recognized, erased, and replaced with translated text.',
       'howToUseTranslationStep4': '4. Tap any translated bubble to compare with original text or edit manually. Long-press the [🌐] icon to quickly open settings.',
+      'officialCommunity': 'Official Community (Telegram / Chinese & English)',
+      'projectRepo': 'Project Repository (GitHub)',
+      'tagDisplayLanguage': 'Tag Display Language',
+      'tagDisplayLanguageHint': 'Select the display language for gallery tags',
+      'tagDisplayJa': 'Japanese (Translated from English)',
+      'tagDisplayZh': 'Chinese (EhTagTranslation)',
+      'tagDisplayRaw': 'Raw English Tags',
+      'switchToChineseTag': 'Switched to Chinese tags',
+      'switchToJapaneseTag': 'Switched to Japanese tags',
+      'switchToRawTag': 'Switched to Raw English tags',
+      'superResolutionGuideTitle': 'AI Super-Resolution Guide',
+      'superResolutionGuideContent': 'Overview:\nEnhance and upscale manga and illustrations using AI models (Real-CUGAN, Manga-Real-ESRGAN, Waifu2x, etc.).\n\nSetup:\n1. Model Directory: Select the folder containing model weights.\n2. Model Type: RealCUGAN or Manga-Real-ESRGAN is recommended for illustration.\n3. GPU ID: Device number of your GPU (normally 0).',
+      'openOfficialWiki': 'Open Official Wiki',
+      'archiveBotGuideTitle': 'Archive Bot Guide',
+      'archiveBotGuideContent': 'Overview:\nConnect to EH Archive Bot on Telegram or private server to batch-download archives.\n\nSetup:\n1. Address: Enter the server URL or IP.\n2. Key: Enter the API token provided by the bot.',
     };
   }
 }

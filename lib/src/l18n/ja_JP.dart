@@ -841,6 +841,21 @@ class ja_JP {
       'howToUseTranslationStep2': '2. 画面中央をタップしてメニューを出し、右上の [🌐] 翻訳アイコンをタップすると翻訳が開始されます。',
       'howToUseTranslationStep3': '3. ページ内のセリフが自動認識・翻訳され、吹き出し内に自然に合成表示されます。',
       'howToUseTranslationStep4': '4. 翻訳された吹き出しをタップすると原文比較・手動編集ができ、右上の翻訳アイコン長押しでこの設定画面を開けます。',
+      'officialCommunity': '公式コミュニティ (Telegram / 中国語・英語)',
+      'projectRepo': 'プロジェクトリポジトリ (GitHub)',
+      'tagDisplayLanguage': 'タグ表示言語',
+      'tagDisplayLanguageHint': '作品タグの表示言語を選択します',
+      'tagDisplayJa': '日本語 (英語原文から翻訳)',
+      'tagDisplayZh': '中国語 (EhTagTranslation)',
+      'tagDisplayRaw': '英語原文 (Raw tags)',
+      'switchToChineseTag': '中国語タグ表示に切り替えました',
+      'switchToJapaneseTag': '日本語タグ表示に切り替えました',
+      'switchToRawTag': '英語原文タグ表示に切り替えました',
+      'superResolutionGuideTitle': 'AI超解像（画像高画質化）の使い方',
+      'superResolutionGuideContent': '【概要】\nAIモデル（Real-CUGAN, Manga-Real-ESRGAN, Waifu2x 等）を用いて、低解像度の漫画やイラストを鮮明に高解像度化（拡大）する機能です。\n\n【設定手順】\n1. モデルディレクトリ: 事前にダウンロードしたモデルファイル（.bin / .param または onnx 等）が格納されているフォルダを選択します。\n2. モデル種類: 漫画・イラストには「RealCUGAN」や「Manga-Real-ESRGAN」が推奨されます。\n3. GPU ID: 搭載されているGPU（NVIDIA / AMD / Intel）のデバイス番号を指定します（通常は「0」）。\n\n【注意】\n初回実行時はモデルの読み込みとGPUの初期化に数秒かかる場合があります。',
+      'openOfficialWiki': '公式Wikiを開く (ブラウザ)',
+      'archiveBotGuideTitle': 'アーカイブボット（Archive Bot）の使い方',
+      'archiveBotGuideContent': '【概要】\nTelegram上の「EH Archive Bot」やプライベートアーカイブサーバーと連携し、作品の一括ダウンロードやアーカイブ保存を行う機能です。\n\n【設定手順】\n1. サーバーアドレス: ボットサーバーのURLまたはIP（例: http://192.168.1.100:8080）を入力します。\n2. APIキー: ボットで発行されたアクセストークンやAPIキーを入力します。\n3. 保存後、作品詳細画面のメニューから「アーカイブボットへ送信」を実行できるようになります。',
     };
   }
 }

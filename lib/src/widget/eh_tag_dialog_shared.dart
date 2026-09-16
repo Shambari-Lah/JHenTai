@@ -22,9 +22,12 @@ import 'package:jhentai/src/widget/eh_wheel_speed_controller.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../database/database.dart';
+import '../enum/eh_namespace.dart';
 import '../model/gallery_tag.dart';
 import '../model/tag_set.dart';
 import '../network/eh_request.dart';
+import '../service/japanese_tag_dictionary.dart';
+import '../service/tag_translation_service.dart';
 import '../setting/user_setting.dart';
 import '../service/log.dart';
 import '../utils/color_util.dart';
@@ -439,17 +442,50 @@ mixin EHTagVoteLogicMixin<T extends StatefulWidget> on State<T> implements Login
 }
 
 /// Shared header + HTML intro widgets for [EHTagDialog] and [EHTagBottomSheet].
-class EHTagDialogHeader extends StatelessWidget {
+class EHTagDialogHeader extends StatefulWidget {
   final TagData tagData;
   final bool showCloseButton;
 
   const EHTagDialogHeader({Key? key, required this.tagData, this.showCloseButton = false}) : super(key: key);
 
   @override
+  State<EHTagDialogHeader> createState() => _EHTagDialogHeaderState();
+}
+
+class _EHTagDialogHeaderState extends State<EHTagDialogHeader> {
+  String? chineseTranslation;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChineseTranslation();
+  }
+
+  void _loadChineseTranslation() {
+    if (widget.tagData.tagName != null && preferenceSetting.tagDisplayLanguage.value == 'zh') {
+      chineseTranslation = widget.tagData.tagName;
+      return;
+    }
+    tagTranslationService.getTagTranslation(widget.tagData.namespace, widget.tagData.key).then((TagData? data) {
+      if (mounted && data != null && data.tagName != null) {
+        setState(() {
+          chineseTranslation = data.tagName;
+        });
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final ns = EHNamespace.findNameSpaceFromDescOrAbbr(widget.tagData.namespace);
+    final jaNamespace = ns?.japaneseDesc ?? widget.tagData.namespace;
+    final jaTag = JapaneseTagDictionary.translate(widget.tagData.namespace, widget.tagData.key);
+    final currentLang = preferenceSetting.tagDisplayLanguage.value;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Column(
@@ -457,23 +493,95 @@ class EHTagDialogHeader extends StatelessWidget {
               children: [
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => FlutterClipboard.copy('${tagData.namespace}:"${tagData.key}"').then((_) => toast('hasCopiedToClipboard'.tr)),
-                  child: Text(
-                    '${tagData.namespace}:${tagData.key}',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  onTap: () => FlutterClipboard.copy('${widget.tagData.namespace}:"${widget.tagData.key}"').then((_) => toast('hasCopiedToClipboard'.tr)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '${widget.tagData.namespace}:"${widget.tagData.key}"',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.copy, size: 14, color: Theme.of(context).hintColor),
+                    ],
                   ),
                 ),
-                if (tagData.tagName != null)
+                const SizedBox(height: 4),
+                if (jaTag != null)
                   Text(
-                    '${tagData.translatedNamespace ?? tagData.namespace}:${tagData.tagName}',
-                    style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor),
+                    '🇯🇵 日本語: $jaNamespace:$jaTag',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: currentLang == 'ja' ? Theme.of(context).colorScheme.primary : Theme.of(context).hintColor,
+                      fontWeight: currentLang == 'ja' ? FontWeight.w600 : FontWeight.normal,
+                    ),
                   ),
+                if (chineseTranslation != null)
+                  Text(
+                    '🇨🇳 中国語: ${ns?.chineseDesc ?? widget.tagData.namespace}:$chineseTranslation',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: currentLang == 'zh' ? Theme.of(context).colorScheme.primary : Theme.of(context).hintColor,
+                      fontWeight: currentLang == 'zh' ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    ActionChip(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      visualDensity: VisualDensity.compact,
+                      label: Text(
+                        '🇨🇳 中国語で表示',
+                        style: TextStyle(fontSize: 11, color: currentLang == 'zh' ? Theme.of(context).colorScheme.primary : null),
+                      ),
+                      onPressed: () {
+                        preferenceSetting.saveTagDisplayLanguage('zh');
+                        if (tagTranslationService.loadingState.value != LoadingState.success) {
+                          tagTranslationService.fetchDataFromGithub();
+                        }
+                        toast('switchToChineseTag'.tr);
+                        setState(() {});
+                      },
+                    ),
+                    ActionChip(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      visualDensity: VisualDensity.compact,
+                      label: Text(
+                        '🇯🇵 日本語で表示',
+                        style: TextStyle(fontSize: 11, color: currentLang == 'ja' ? Theme.of(context).colorScheme.primary : null),
+                      ),
+                      onPressed: () {
+                        preferenceSetting.saveTagDisplayLanguage('ja');
+                        toast('switchToJapaneseTag'.tr);
+                        setState(() {});
+                      },
+                    ),
+                    ActionChip(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      visualDensity: VisualDensity.compact,
+                      label: Text(
+                        '🔤 英語原文で表示',
+                        style: TextStyle(fontSize: 11, color: currentLang == 'raw' ? Theme.of(context).colorScheme.primary : null),
+                      ),
+                      onPressed: () {
+                        preferenceSetting.saveTagDisplayLanguage('raw');
+                        toast('switchToRawTag'.tr);
+                        setState(() {});
+                      },
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-          if (showCloseButton)
-            IconButton(
-              icon: const Icon(Icons.close, size: 20),
+          if (widget.showCloseButton)
+            const IconButton(
+              icon: Icon(Icons.close, size: 20),
               onPressed: backRoute,
             ),
         ],

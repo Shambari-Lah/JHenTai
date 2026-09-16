@@ -59,7 +59,7 @@ class _EHTagState extends State<EHTag> with AnimationMixin {
   @override
   Widget build(BuildContext context) {
     Widget child = Text(
-      (widget.tag.tagData.tagName ?? widget.tag.tagData.key) +
+      widget.tag.displayTagName +
           (widget.tag.voteStatus == EHTagVoteStatus.up
               ? '↑'
               : widget.tag.voteStatus == EHTagVoteStatus.down

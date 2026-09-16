@@ -53,6 +53,32 @@ class _EHArchiveBotSettingDialogState extends State<EHArchiveBotSettingDialog> {
           IconButton(
             icon: const Icon(Icons.help),
             onPressed: () {
+              if (preferenceSetting.locale.value.languageCode == 'ja') {
+                Get.dialog(
+                  AlertDialog(
+                    title: Text('archiveBotGuideTitle'.tr),
+                    content: SingleChildScrollView(
+                      child: Text('archiveBotGuideContent'.tr, style: const TextStyle(fontSize: 13, height: 1.5)),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Get.back();
+                          launchUrlString(
+                            'https://github.com/jiangtian616/JHenTai/wiki/Archive-Bot-Usage',
+                          );
+                        },
+                        child: Text('openOfficialWiki'.tr),
+                      ),
+                      TextButton(
+                        onPressed: Get.back,
+                        child: Text('ok'.tr),
+                      ),
+                    ],
+                  ),
+                );
+                return;
+              }
               launchUrlString(
                 preferenceSetting.locale.value.languageCode == 'zh'
                     ? 'https://github.com/jiangtian616/JHenTai/wiki/%E5%BD%92%E6%A1%A3%E6%9C%BA%E5%99%A8%E4%BA%BA%E4%BD%BF%E7%94%A8%E6%96%B9%E6%B3%95'

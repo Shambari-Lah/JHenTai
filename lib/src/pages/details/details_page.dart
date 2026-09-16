@@ -18,6 +18,7 @@ import 'package:jhentai/src/pages/details/comment/eh_comment.dart';
 import 'package:jhentai/src/pages/download/download_base_page.dart';
 import 'package:jhentai/src/routes/routes.dart';
 import 'package:jhentai/src/service/archive_download_service.dart';
+import 'package:jhentai/src/service/tag_translation_service.dart';
 import 'package:jhentai/src/utils/uuid_util.dart';
 import 'package:jhentai/src/widget/eh_alert_dialog.dart';
 import 'package:jhentai/src/widget/eh_gallery_detail_dialog.dart';
@@ -1267,38 +1268,86 @@ class DetailsPage extends StatelessWidget with Scroll2TopPageMixin {
             return const SizedBox();
           }
 
-          return Column(
-            children: state.galleryDetails!.tags.entries
-                .map(
-                  (entry) => Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildCategoryTag(entry.key),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Wrap(
-                          spacing: 5,
-                          runSpacing: 5,
-                          children: _buildSubTags(entry.value),
-                        ),
+          final currentLang = preferenceSetting.tagDisplayLanguage.value;
+          final currentLangLabel = currentLang == 'zh'
+              ? '🇨🇳 中国語'
+              : currentLang == 'raw'
+                  ? '🔤 原文(英語)'
+                  : '🇯🇵 日本語';
+
+          return Builder(
+            builder: (context) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () {
+                      final next = currentLang == 'ja' ? 'zh' : (currentLang == 'zh' ? 'raw' : 'ja');
+                      preferenceSetting.saveTagDisplayLanguage(next);
+                      if (next == 'zh' && tagTranslationService.loadingState.value != LoadingState.success) {
+                        tagTranslationService.fetchDataFromGithub();
+                      }
+                      tagTranslationService.translateTagsIfNeeded(state.galleryDetails!.tags).then((_) {
+                        logic.update([DetailsPageLogic.detailsId]);
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                    ],
-                  ).marginOnly(top: 10),
-                )
-                .toList(),
-          ).fadeIn().marginSymmetric(horizontal: UIConfig.detailPagePadding);
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.translate, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            currentLangLabel,
+                            style: TextStyle(fontSize: 11, color: Theme.of(context).textTheme.bodySmall?.color),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ).marginOnly(bottom: 4),
+                ...state.galleryDetails!.tags.entries
+                    .map(
+                      (entry) => Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildCategoryTag(entry.key),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Wrap(
+                              spacing: 5,
+                              runSpacing: 5,
+                              children: _buildSubTags(entry.value),
+                            ),
+                          ),
+                        ],
+                      ).marginOnly(top: 10),
+                    )
+                    .toList(),
+              ],
+            ).fadeIn().marginSymmetric(horizontal: UIConfig.detailPagePadding),
+          );
         },
       ),
     );
   }
 
   Widget _buildCategoryTag(String category) {
+    final ns = EHNamespace.findNameSpaceFromDescOrAbbr(category);
+    final String? tagName = ns?.localizedDesc;
     return EHTag(
       tag: GalleryTag(
         tagData: TagData(
           namespace: 'rows',
           key: category,
-          tagName: preferenceSetting.enableTagZHTranslation.isTrue ? EHNamespace.findNameSpaceFromDescOrAbbr(category)?.chineseDesc : null,
+          tagName: tagName,
         ),
       ),
       addNameSpaceColor: true,

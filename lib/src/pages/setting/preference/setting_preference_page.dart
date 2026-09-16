@@ -30,6 +30,7 @@ class SettingPreferencePage extends StatelessWidget {
             padding: const EdgeInsets.only(top: 16),
             children: [
               _buildLanguage(),
+              _buildTagDisplayLanguage(),
               _buildTagTranslate(),
               _buildTagOrderOptimization(),
               _buildDefaultTab(),
@@ -80,6 +81,40 @@ class SettingPreferencePage extends StatelessWidget {
                   value: localeCode2Locale(localeCode),
                 ))
             .toList(),
+      ),
+    );
+  }
+
+  Widget _buildTagDisplayLanguage() {
+    return ListTile(
+      title: Text('tagDisplayLanguage'.tr),
+      subtitle: Text('tagDisplayLanguageHint'.tr),
+      trailing: DropdownButton<String>(
+        value: preferenceSetting.tagDisplayLanguage.value,
+        elevation: 4,
+        alignment: AlignmentDirectional.centerEnd,
+        onChanged: (String? newValue) {
+          if (newValue != null) {
+            preferenceSetting.saveTagDisplayLanguage(newValue);
+            if (newValue == 'zh' && tagTranslationService.loadingState.value != LoadingState.success) {
+              tagTranslationService.fetchDataFromGithub();
+            }
+          }
+        },
+        items: [
+          DropdownMenuItem(
+            child: Text('tagDisplayJa'.tr),
+            value: 'ja',
+          ),
+          DropdownMenuItem(
+            child: Text('tagDisplayZh'.tr),
+            value: 'zh',
+          ),
+          DropdownMenuItem(
+            child: Text('tagDisplayRaw'.tr),
+            value: 'raw',
+          ),
+        ],
       ),
     );
   }

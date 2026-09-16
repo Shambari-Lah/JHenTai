@@ -14,6 +14,7 @@ PreferenceSetting preferenceSetting = PreferenceSetting();
 
 class PreferenceSetting with JHLifeCircleBeanWithConfigStorage implements JHLifeCircleBean {
   Rx<Locale> locale = computeDefaultLocale(PlatformDispatcher.instance.locale).obs;
+  RxString tagDisplayLanguage = 'ja'.obs;
   RxBool enableTagZHTranslation = false.obs;
   RxBool enableTagZHSearchOrderOptimization = false.obs;
   Rx<TabBarIconNameEnum> defaultTab = TabBarIconNameEnum.home.obs;
@@ -51,6 +52,7 @@ class PreferenceSetting with JHLifeCircleBeanWithConfigStorage implements JHLife
     if ((map['locale'] != null)) {
       locale.value = localeCode2Locale(map['locale']);
     }
+    tagDisplayLanguage.value = map['tagDisplayLanguage'] ?? (locale.value.languageCode == 'zh' ? 'zh' : 'ja');
     showR18GImageDirectly.value = map['showR18GImageDirectly'] ?? showR18GImageDirectly.value;
     enableSwipeBackGesture.value = map['enableSwipeBackGesture'] ?? enableSwipeBackGesture.value;
     enableTagZHTranslation.value = map['enableTagZHTranslation'] ?? enableTagZHTranslation.value;
@@ -83,6 +85,7 @@ class PreferenceSetting with JHLifeCircleBeanWithConfigStorage implements JHLife
   String toConfigString() {
     return jsonEncode({
       'locale': locale.value.toString(),
+      'tagDisplayLanguage': tagDisplayLanguage.value,
       'showR18GImageDirectly': showR18GImageDirectly.value,
       'enableTagZHTranslation': enableTagZHTranslation.value,
       'enableTagZHSearchOrderOptimization': enableTagZHSearchOrderOptimization.value,
@@ -134,6 +137,12 @@ class PreferenceSetting with JHLifeCircleBeanWithConfigStorage implements JHLife
   Future<void> saveEnableTagZHTranslation(bool enableTagZHTranslation) async {
     log.debug('saveEnableTagZHTranslation:$enableTagZHTranslation');
     this.enableTagZHTranslation.value = enableTagZHTranslation;
+    await saveBeanConfig();
+  }
+
+  Future<void> saveTagDisplayLanguage(String tagDisplayLanguage) async {
+    log.debug('saveTagDisplayLanguage:$tagDisplayLanguage');
+    this.tagDisplayLanguage.value = tagDisplayLanguage;
     await saveBeanConfig();
   }
 

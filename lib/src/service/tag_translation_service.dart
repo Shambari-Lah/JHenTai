@@ -20,6 +20,7 @@ import 'package:retry/retry.dart';
 import '../database/database.dart';
 import '../enum/config_enum.dart';
 import '../model/gallery_tag.dart';
+import 'japanese_tag_dictionary.dart';
 import 'jh_service.dart';
 import 'log.dart';
 
@@ -46,7 +47,9 @@ class TagTranslationService with JHLifeCircleBeanErrorCatch implements JHLifeCir
   RxnString timeStamp = RxnString(null);
   RxString downloadProgress = RxString('0 MB');
 
-  bool get isReady => preferenceSetting.enableTagZHTranslation.isTrue && (loadingState.value == LoadingState.success || timeStamp.value != null);
+  bool get isReady =>
+      preferenceSetting.tagDisplayLanguage.value == 'ja' ||
+      (preferenceSetting.enableTagZHTranslation.isTrue && (loadingState.value == LoadingState.success || timeStamp.value != null));
 
   @override
   List<JHLifeCircleBean> get initDependencies => super.initDependencies..add(localConfigService);
@@ -169,26 +172,88 @@ class TagTranslationService with JHLifeCircleBeanErrorCatch implements JHLifeCir
     log.info('Update tag translation database success, timestamp: $timeStamp');
   }
 
-  /// won't translate keys
+  /// Translate tags into Japanese (from English raw tag) and Chinese (from DB)
   Future<void> translateTagsIfNeeded(LinkedHashMap<String, List<GalleryTag>> tags) async {
-    if (!isReady) {
-      return;
-    }
-
     List<Future> futures = [];
 
-    tags.forEach((namespace, tags) {
-      for (GalleryTag tag in tags) {
-        futures.add(
-          getTagTranslation(namespace, tag.tagData.key).then((TagData? value) => tag.tagData = value ?? tag.tagData),
-        );
+    tags.forEach((namespace, tagList) {
+      for (GalleryTag tag in tagList) {
+        // 1. Always translate from English raw tag to Japanese
+        final String? jaTranslation = JapaneseTagDictionary.translate(namespace, tag.tagData.key);
+        tag.japaneseTagName = jaTranslation;
+
+        // 2. Fetch Chinese translation from DB if DB is ready
+        if (loadingState.value == LoadingState.success || timeStamp.value != null) {
+          futures.add(
+            getTagTranslation(namespace, tag.tagData.key).then((TagData? dbData) {
+              if (dbData != null) {
+                tag.chineseTagName = dbData.tagName;
+              }
+              _applyTagDataLanguage(tag, namespace, jaTranslation, dbData);
+            }),
+          );
+        } else {
+          _applyTagDataLanguage(tag, namespace, jaTranslation, null);
+        }
       }
     });
 
-    await Future.wait(futures);
+    if (futures.isNotEmpty) {
+      await Future.wait(futures);
+    }
+  }
+
+  void _applyTagDataLanguage(GalleryTag tag, String namespace, String? jaTranslation, TagData? dbData) {
+    final mode = tag.tagLanguageOverride ?? preferenceSetting.tagDisplayLanguage.value;
+    final ns = EHNamespace.findNameSpaceFromDescOrAbbr(namespace);
+
+    if (mode == 'zh' && dbData != null) {
+      tag.tagData = dbData;
+    } else if (mode == 'ja') {
+      tag.tagData = TagData(
+        namespace: namespace,
+        key: tag.tagData.key,
+        translatedNamespace: ns?.japaneseDesc ?? ns?.desc ?? namespace,
+        tagName: jaTranslation ?? tag.tagData.key,
+        fullTagName: dbData?.fullTagName,
+        intro: dbData?.intro,
+        links: dbData?.links,
+      );
+    } else if (mode == 'raw') {
+      tag.tagData = TagData(
+        namespace: namespace,
+        key: tag.tagData.key,
+        translatedNamespace: null,
+        tagName: null,
+        fullTagName: dbData?.fullTagName,
+        intro: dbData?.intro,
+        links: dbData?.links,
+      );
+    }
   }
 
   Future<List<TagData>> translateTagDatasIfNeeded(List<TagData> tags) async {
+    final mode = preferenceSetting.tagDisplayLanguage.value;
+    if (mode == 'raw') {
+      return tags;
+    }
+
+    if (mode == 'ja') {
+      return tags.map((tag) {
+        final ns = EHNamespace.findNameSpaceFromDescOrAbbr(tag.namespace);
+        final jaName = JapaneseTagDictionary.translate(tag.namespace, tag.key);
+        return TagData(
+          namespace: tag.namespace,
+          key: tag.key,
+          translatedNamespace: ns?.japaneseDesc ?? ns?.desc ?? tag.namespace,
+          tagName: jaName ?? tag.key,
+          fullTagName: tag.fullTagName,
+          intro: tag.intro,
+          links: tag.links,
+        );
+      }).toList();
+    }
+
     if (!isReady) {
       return [];
     }
