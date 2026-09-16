@@ -941,6 +941,7 @@ Example 2: Block comments with a score not exceeding 10————Comment Score
       'visualTranslationSettingHint': 'Configure OCR engine, API key, and target language',
       'enableVisualTranslation': 'Enable Visual Translation Overlay',
       'enableVisualTranslationHint': 'Automatically detect, translate, and inpaint speech bubbles in reader',
+      'sourceTranslationLanguage': 'Source Language',
       'targetTranslationLanguage': 'Target Language',
       'ocrEngineMode': 'OCR Recognition Engine',
       'ocrEngineAuto': 'Auto',

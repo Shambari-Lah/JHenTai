@@ -6,6 +6,7 @@ import 'package:jhentai/src/service/storage_service.dart';
 import '../model/visual_translation_annotation.dart';
 import 'cloud_vision_service.dart';
 import 'image_preprocessing_service.dart';
+import 'text_translation_service.dart';
 import 'log.dart';
 
 enum OcrEngineMode {
@@ -22,6 +23,18 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
 
   /// Google Cloud Vision API キー
   final RxString cloudVisionApiKey = ''.obs;
+
+  /// Google Gemini API キー
+  final RxString geminiApiKey = ''.obs;
+
+  /// DeepL API キー
+  final RxString deeplApiKey = ''.obs;
+
+  /// テキスト機械翻訳エンジン
+  final Rx<TranslationEngine> translationEngine = TranslationEngine.googleGtx.obs;
+
+  /// 翻訳元の言語 ('auto': 自動検出, 'ja', 'en', 'zh-CN', 'ko' など)
+  final RxString sourceLanguage = 'auto'.obs;
 
   /// ターゲット翻訳言語 (デフォルト: 日本語)
   final RxString targetLanguage = 'ja'.obs;
@@ -41,12 +54,19 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
   Future<void> doInitBean() async {
     isTranslationEnabled.value = storageService.read('visualTranslationEnabled') ?? false;
     cloudVisionApiKey.value = storageService.read('visualTranslationCloudVisionApiKey') ?? '';
+    geminiApiKey.value = storageService.read('visualTranslationGeminiApiKey') ?? '';
+    deeplApiKey.value = storageService.read('visualTranslationDeeplApiKey') ?? '';
+    final int? engineIndex = storageService.read('visualTranslationEngine');
+    if (engineIndex != null && engineIndex >= 0 && engineIndex < TranslationEngine.values.length) {
+      translationEngine.value = TranslationEngine.values[engineIndex];
+    }
+    sourceLanguage.value = storageService.read('visualTranslationSourceLanguage') ?? 'auto';
     targetLanguage.value = storageService.read('visualTranslationTargetLanguage') ?? 'ja';
     final int? ocrModeIndex = storageService.read('visualTranslationOcrEngineMode');
     if (ocrModeIndex != null && ocrModeIndex >= 0 && ocrModeIndex < OcrEngineMode.values.length) {
       ocrEngineMode.value = OcrEngineMode.values[ocrModeIndex];
     }
-    log.info('[VisualTranslationService] Initialized with targetLanguage=${targetLanguage.value}, ocrMode=${ocrEngineMode.value.name}');
+    log.info('[VisualTranslationService] Initialized with src=${sourceLanguage.value}, tgt=${targetLanguage.value}, engine=${translationEngine.value.name}, ocrMode=${ocrEngineMode.value.name}');
   }
 
   @override
@@ -67,7 +87,31 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
   void saveApiKey(String key) {
     cloudVisionApiKey.value = key.trim();
     storageService.write('visualTranslationCloudVisionApiKey', cloudVisionApiKey.value);
-    log.info('[VisualTranslationService] API Key updated');
+    log.info('[VisualTranslationService] Cloud Vision API Key updated');
+  }
+
+  void saveGeminiApiKey(String key) {
+    geminiApiKey.value = key.trim();
+    storageService.write('visualTranslationGeminiApiKey', geminiApiKey.value);
+    log.info('[VisualTranslationService] Gemini API Key updated');
+  }
+
+  void saveDeeplApiKey(String key) {
+    deeplApiKey.value = key.trim();
+    storageService.write('visualTranslationDeeplApiKey', deeplApiKey.value);
+    log.info('[VisualTranslationService] DeepL API Key updated');
+  }
+
+  void setTranslationEngine(TranslationEngine engine) {
+    translationEngine.value = engine;
+    storageService.write('visualTranslationEngine', engine.index);
+    log.info('[VisualTranslationService] Translation engine set to ${engine.name}');
+  }
+
+  void setSourceLanguage(String lang) {
+    sourceLanguage.value = lang;
+    storageService.write('visualTranslationSourceLanguage', lang);
+    log.info('[VisualTranslationService] Source language set to $lang');
   }
 
   void setTargetLanguage(String lang) {
@@ -146,6 +190,43 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
             strokeColor: ann.strokeColor,
             strokeWidth: ann.strokeWidth,
           );
+        }
+      }
+
+      // セリフテキストの機械翻訳を実行 (オノマトペ以外の文章を targetLanguage へ翻訳)
+      final nonOnoAnnotations = annotations.where((a) => !a.isOnomatopoeia).toList();
+      if (nonOnoAnnotations.isNotEmpty) {
+        log.info('[VisualTranslationService] Translating ${nonOnoAnnotations.length} dialogue bubbles using ${translationEngine.value.name} (${sourceLanguage.value} -> ${targetLanguage.value})');
+        final textsToTranslate = nonOnoAnnotations.map((a) => a.sourceText).toList();
+        final translatedTexts = await TextTranslationService.translateBatch(
+          texts: textsToTranslate,
+          sourceLang: sourceLanguage.value,
+          targetLang: targetLanguage.value,
+          engine: translationEngine.value,
+          geminiApiKey: geminiApiKey.value,
+          deeplApiKey: deeplApiKey.value,
+        );
+        for (int i = 0; i < nonOnoAnnotations.length; i++) {
+          final ann = nonOnoAnnotations[i];
+          final translated = translatedTexts[i];
+          final idx = annotations.indexWhere((a) => a.id == ann.id);
+          if (idx != -1) {
+            final old = annotations[idx];
+            annotations[idx] = VisualTranslationAnnotation(
+              id: old.id,
+              sourceText: old.sourceText,
+              translatedText: translated.isNotEmpty ? translated : old.sourceText,
+              normalizedRect: old.normalizedRect,
+              angle: old.angle,
+              dominantColor: old.dominantColor,
+              isOnomatopoeia: old.isOnomatopoeia,
+              isHandwriting: old.isHandwriting,
+              isVertical: old.isVertical,
+              textColor: old.textColor,
+              strokeColor: old.strokeColor,
+              strokeWidth: old.strokeWidth,
+            );
+          }
         }
       }
 
