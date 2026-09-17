@@ -144,17 +144,55 @@ class TextTranslationService {
       }
     }
 
-    // 3. 標準 Google GTX / MyMemory 翻訳（高速・キー不要）
-    final List<String> results = [];
-    for (final text in texts) {
-      final translated = await translateText(
-        text: text,
-        sourceLang: sourceLang,
-        targetLang: effectiveTargetLang,
-      );
-      results.add(translated);
+    // 3. 標準 Google GTX 一括バッチ翻訳（1回のリクエストで全文章を一括処理・高速化＆15 RPM対策）
+    return _translateViaGtxBatch(
+      texts: texts,
+      sourceLang: sourceLang,
+      targetLang: effectiveTargetLang,
+    );
+  }
+
+  static const String _batchDelimiter = '\n<<<BLOCK_SEP>>>\n';
+
+  /// Google GTX による 1 リクエスト一括バッチ翻訳
+  static Future<List<String>> _translateViaGtxBatch({
+    required List<String> texts,
+    String sourceLang = 'auto',
+    required String targetLang,
+  }) async {
+    if (texts.isEmpty) return [];
+    if (texts.length == 1) {
+      final res = await translateText(text: texts.first, sourceLang: sourceLang, targetLang: targetLang);
+      return [res];
     }
-    return results;
+
+    final joined = texts.join(_batchDelimiter);
+    try {
+      final String gtxUrl =
+          'https://translate.googleapis.com/translate_a/single?client=gtx&sl=${Uri.encodeComponent(sourceLang)}&tl=${Uri.encodeComponent(targetLang)}&dt=t&q=${Uri.encodeComponent(joined)}';
+
+      final response = await _dio.get(gtxUrl);
+      if (response.statusCode == 200 && response.data != null) {
+        dynamic data = response.data;
+        if (data is String) data = jsonDecode(data);
+        if (data is List && data.isNotEmpty && data[0] is List) {
+          final StringBuffer sb = StringBuffer();
+          for (final segment in data[0]) {
+            if (segment is List && segment.isNotEmpty && segment[0] != null) {
+              sb.write(segment[0].toString());
+            }
+          }
+          final String fullTranslated = sb.toString();
+          final parts = fullTranslated.split(RegExp(r'\s*<<<BLOCK_SEP>>>\s*'));
+          if (parts.length == texts.length) {
+            return parts.map((p) => p.trim()).toList();
+          }
+        }
+      }
+    } catch (_) {}
+
+    // フォールバック: 並列 Future.wait
+    return Future.wait(texts.map((t) => translateText(text: t, sourceLang: sourceLang, targetLang: targetLang)));
   }
 
   /// 単一テキストの翻訳 (Google GTX / MyMemory)

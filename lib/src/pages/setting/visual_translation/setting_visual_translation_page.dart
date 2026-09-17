@@ -185,13 +185,16 @@ class SettingVisualTranslationPage extends StatelessWidget {
     String modeName;
     switch (currentMode) {
       case OcrEngineMode.auto:
-        modeName = 'ocrEngineAuto'.tr;
+        modeName = '自動 (キー設定時Cloud/未設定時ML Kit) [推奨]';
+        break;
+      case OcrEngineMode.mlKit:
+        modeName = 'Google ML Kit (オンデバイス・完全ローカル)';
         break;
       case OcrEngineMode.cloudVision:
-        modeName = 'Google Cloud Vision API';
+        modeName = 'Google Cloud Vision API (高精度・縦書き対応)';
         break;
-      case OcrEngineMode.localEnhanced:
-        modeName = 'ocrEngineLocal'.tr;
+      case OcrEngineMode.geminiVision:
+        modeName = 'Google Gemini AI Vision (マルチモーダル)';
         break;
     }
 
@@ -214,21 +217,28 @@ class SettingVisualTranslationPage extends StatelessWidget {
               visualTranslationService.setOcrEngineMode(OcrEngineMode.auto);
               Get.back();
             },
-            child: Text('ocrEngineAutoDesc'.tr),
+            child: const Text('自動 (キー設定時Cloud/未設定時ML Kit) [推奨]'),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              visualTranslationService.setOcrEngineMode(OcrEngineMode.mlKit);
+              Get.back();
+            },
+            child: const Text('Google ML Kit (完全オンデバイス・通信ゼロ・高速)'),
           ),
           SimpleDialogOption(
             onPressed: () {
               visualTranslationService.setOcrEngineMode(OcrEngineMode.cloudVision);
               Get.back();
             },
-            child: const Text('Google Cloud Vision API (高精度・縦書き対応)'),
+            child: const Text('Google Cloud Vision API (キー必要)'),
           ),
           SimpleDialogOption(
             onPressed: () {
-              visualTranslationService.setOcrEngineMode(OcrEngineMode.localEnhanced);
+              visualTranslationService.setOcrEngineMode(OcrEngineMode.geminiVision);
               Get.back();
             },
-            child: Text('ocrEngineLocalDesc'.tr),
+            child: const Text('Google Gemini AI Vision (キー必要)'),
           ),
         ],
       ),

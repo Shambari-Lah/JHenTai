@@ -196,9 +196,10 @@ abstract class BaseLayout extends StatelessWidget {
       final String pageKey = '${readPageState.readPageInfo.gid ?? 0}_$index';
       final annotations = visualTranslationService.getAnnotationsForPage(pageKey);
       final bool isTranslating = visualTranslationService.isPageTranslating(pageKey);
+      final bool hasProcessed = visualTranslationService.hasPageBeenProcessed(pageKey);
 
-      // キャッシュにアノテーションがなく、現在翻訳中でもない場合は自動トリガー
-      if (annotations.isEmpty && !isTranslating) {
+      // まだ処理されておらず、現在翻訳中でもない場合のみ自動トリガー
+      if (!hasProcessed && !isTranslating) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _triggerTranslationForIndex(index);
         });
@@ -274,7 +275,7 @@ abstract class BaseLayout extends StatelessWidget {
 
     final String pageKey = '${readPageState.readPageInfo.gid ?? 0}_$index';
     if (visualTranslationService.isPageTranslating(pageKey)) return;
-    if (visualTranslationService.getAnnotationsForPage(pageKey).isNotEmpty) return;
+    if (visualTranslationService.hasPageBeenProcessed(pageKey)) return;
 
     Uint8List? imageBytes;
     final galleryImg = readPageState.images[index]!;

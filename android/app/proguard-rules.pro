@@ -1,1 +1,2 @@
 -keep class androidx.lifecycle.DefaultLifecycleObserver
+-dontwarn com.google.mlkit.vision.text.devanagari.**

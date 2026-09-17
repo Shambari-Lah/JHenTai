@@ -11,12 +11,14 @@ import 'package:jhentai/src/setting/preference_setting.dart';
 import 'cloud_vision_service.dart';
 import 'image_preprocessing_service.dart';
 import 'text_translation_service.dart';
+import 'ml_kit_ocr_service.dart';
 import 'log.dart';
 
 enum OcrEngineMode {
-  auto,          // オンライン時は Cloud Vision、オフライン時はローカル高精度処理
+  auto,          // デフォルト: キー設定時は Cloud Vision/Gemini、未設定時は ML Kit オンデバイス
+  mlKit,         // Google ML Kit オンデバイス高精度ローカル認識 (完全オフライン・通信ゼロ)
   cloudVision,   // Google Cloud Vision API (DOCUMENT_TEXT_DETECTION)
-  localEnhanced, // コントラスト強調・二値化・トーン除去前処理付きローカル認識
+  geminiVision,  // Google Gemini 2.0 Flash Vision (マルチモーダル)
 }
 
 VisualTranslationService visualTranslationService = VisualTranslationService();
@@ -63,9 +65,11 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
   final Set<String> _loadingPages = {};
 
   final CloudVisionService _cloudVisionService = CloudVisionService();
+  final MlKitOcrService _mlKitOcrService = MlKitOcrService();
   final Dio _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 20), receiveTimeout: const Duration(seconds: 25)));
 
   bool isPageTranslating(String pageKey) => _loadingPages.contains(pageKey);
+  bool hasPageBeenProcessed(String pageKey) => _pageAnnotationsCache.containsKey(pageKey);
 
   @override
   List<JHLifeCircleBean> get initDependencies => [storageService];
@@ -127,24 +131,28 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
   void setTranslationEngine(TranslationEngine engine) {
     translationEngine.value = engine;
     storageService.write('visualTranslationEngine', engine.index);
+    clearCache();
     log.info('[VisualTranslationService] Translation engine set to ${engine.name}');
   }
 
   void setSourceLanguage(String lang) {
     sourceLanguage.value = lang;
     storageService.write('visualTranslationSourceLanguage', lang);
+    clearCache();
     log.info('[VisualTranslationService] Source language set to $lang');
   }
 
   void setTargetLanguage(String lang) {
     targetLanguage.value = lang;
     storageService.write('visualTranslationTargetLanguage', lang);
+    clearCache();
     log.info('[VisualTranslationService] Target language set to $lang');
   }
 
   void setOcrEngineMode(OcrEngineMode mode) {
     ocrEngineMode.value = mode;
     storageService.write('visualTranslationOcrEngineMode', mode.index);
+    clearCache();
     log.info('[VisualTranslationService] OCR engine mode set to ${mode.name}');
   }
 
@@ -170,8 +178,8 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
       final bool hasCloudVision = cloudVisionApiKey.value.isNotEmpty;
       final bool hasGemini = geminiApiKey.value.isNotEmpty;
 
-      // 1. Google Cloud Vision API による高精度 OCR
-      if ((ocrEngineMode.value == OcrEngineMode.cloudVision || ocrEngineMode.value == OcrEngineMode.auto) && hasCloudVision) {
+      // 1. Google Cloud Vision API による高精度 OCR (設定時)
+      if (ocrEngineMode.value == OcrEngineMode.cloudVision && hasCloudVision) {
         log.info('[VisualTranslationService] Running Cloud Vision OCR for page: $pageKey');
         annotations = await _cloudVisionService.detectDocumentText(
           imageBytes: imageBytes,
@@ -180,8 +188,8 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
           imageHeight: imageHeight,
         );
       }
-      // 2. Gemini AI による Vision（吹き出し検出 ＆ 翻訳一括）
-      else if (hasGemini) {
+      // 2. Gemini AI による Vision (設定時)
+      else if (ocrEngineMode.value == OcrEngineMode.geminiVision && hasGemini) {
         log.info('[VisualTranslationService] Running Gemini Multimodal Vision for page: $pageKey');
         annotations = await _detectAndTranslateWithGemini(
           imageBytes: imageBytes,
@@ -197,9 +205,19 @@ class VisualTranslationService extends GetxController with JHLifeCircleBeanError
           return annotations;
         }
       }
-      // 3. 無料フォールバック OCR (無料API / エンドポイント)
+      // 3. デフォルト / キー未設定時: Google ML Kit オンデバイス高精度ローカルOCR (Android/iOS)
+      else if (GetPlatform.isAndroid || GetPlatform.isIOS) {
+        log.info('[VisualTranslationService] Running Google ML Kit on-device OCR for page: $pageKey');
+        annotations = await _mlKitOcrService.detectText(
+          imageBytes: imageBytes,
+          languageCode: sourceLanguage.value,
+          imageWidth: imageWidth,
+          imageHeight: imageHeight,
+        );
+      }
+      // 4. デスクトップ環境 (Windows PC) 等のフォールバック
       else {
-        log.info('[VisualTranslationService] Running Free Fallback OCR for page: $pageKey');
+        log.info('[VisualTranslationService] Running Desktop Fallback OCR for page: $pageKey');
         annotations = await _runFallbackOcr(
           imageBytes: imageBytes,
           imageWidth: imageWidth,
